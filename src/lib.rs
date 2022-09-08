@@ -1,16 +1,6 @@
-// use js_sys::{ArrayBuffer,Uint8Array};
-use js_sys::*;//{Array,Uint8Array};
+use js_sys::*;
 use wasm_bindgen::prelude::*;
 use web_sys::{Url,Blob};
-/*
-
-const source = "alert('test')";
-const el = document.createElement("script");
-el.src = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
-document.head.appendChild(el);
-
-*/
-
 
 // #[cfg(target_arch = "wasm32")]
 pub mod wasm {
@@ -34,15 +24,17 @@ macro_rules! log_trace {
     )
 }
 
-
-
 pub enum Content<'content> {
     Script(&'content [u8]),
     Style(&'content [u8]),
 }
 
-
 pub fn load_scripts_impl() -> Result<(),JsValue> {
+
+    // let js_script_content = r#"
+    //     alert("hello world");
+    // "#.as_bytes();
+
     let xterm_js = include_bytes!("../extern/resources/xterm.js");
     inject_blob("xterm.js", Content::Script(xterm_js))?;
     let xterm_addon_fit_js = include_bytes!("../extern/resources/xterm-addon-fit.js");
@@ -55,14 +47,9 @@ pub fn load_scripts_impl() -> Result<(),JsValue> {
     Ok(())
 }
 
-
-// pub fn inject_blob(js_script_content : &[u8]) -> Result<(),JsValue> {
 pub fn inject_blob(name : &str, content : Content) -> Result<(),JsValue> {
 
     log_trace!("loading {}",name);
-    // let js_script_content = r#"
-    //     alert("hello world");
-    // "#.as_bytes();
 
     let document = web_sys::window().unwrap().document().unwrap();
     let html_root = document.get_elements_by_tag_name("html").item(0).unwrap();
@@ -108,20 +95,3 @@ pub fn inject_blob(name : &str, content : Content) -> Result<(),JsValue> {
 pub fn load_scripts() {
     load_scripts_impl().unwrap();
 }
-
-// #[cfg(test)]
-// mod tests {
-
-//     use std::include_bytes;
-
-//     #[test]
-//     fn it_works() {
-
-//         // assert_eq!(bytes, b"adi\xc3\xb3s\n");
-//         print!("{}", String::from_utf8_lossy(bytes));
-
-
-//         // let result = 2 + 2;
-//         // assert_eq!(result, 4);
-//     }
-// }
