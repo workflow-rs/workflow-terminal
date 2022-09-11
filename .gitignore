@@ -2,3 +2,4 @@
 /Cargo.lock
 /extern/*
 /root/workflow-terminal
+analyzer-target

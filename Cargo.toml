@@ -24,6 +24,7 @@ features = [
     'Element',
     'Url',
     'Blob',
+    'CustomEvent',
 
 
     # 'console',

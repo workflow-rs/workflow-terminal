@@ -4,6 +4,7 @@
             import * as workflow from '/workflow-terminal/workflow-terminal.js';
             (async () => {
                 const wasm = await workflow.default('/workflow-terminal/workflow-terminal_bg.wasm');
+                window.terminal_wasm = wasm;
             })();
         </script>
     </head>
