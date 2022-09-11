@@ -1,7 +1,11 @@
 use wasm_bindgen::JsValue;
+use thiserror::Error;
 
-pub enum Error{
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("Error: {0}")]
     Str(String),
+    #[error("Error: {0:?}")]
     JsValue(JsValue)
 }
 

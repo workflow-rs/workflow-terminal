@@ -1,16 +1,21 @@
-use js_sys::*;
-use wasm_bindgen::JsCast;
+// use js_sys::*;
+// use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-use web_sys::{Url,Blob};
+// use web_sys::{Url,Blob};
 mod terminal;
 mod error;
-pub mod listener;
-pub mod utils;
+// pub mod listener;
+// pub mod utils;
+pub mod loader;
+// use workflow_dom::*;
+
 //use error::Error;
-pub use listener::Listener;
+// pub use listener::Listener;
 pub use terminal::Terminal;
-pub use utils::{body, document};
+// pub use utils::{body, document};
+use workflow_dom::utils::body;
 use std::sync::Arc;
+
 
 pub type Result<T> = std::result::Result<T, JsValue>;
 
@@ -36,34 +41,12 @@ macro_rules! log_trace {
     )
 }
 
+/* 
 pub enum Content<'content> {
     Script(&'content [u8]),
     Style(&'content [u8])
 }
 
-pub fn load_scripts_impl() -> Result<()> {
-
-    // let js_script_content = r#"
-    //     alert("hello world");
-    // "#.as_bytes();
-
-    let xterm_js = include_bytes!("../extern/resources/xterm.js");
-    inject_blob("xterm.js", Content::Script(xterm_js))?;
-    let xterm_addon_fit_js = include_bytes!("../extern/resources/xterm-addon-fit.js");
-    inject_blob("xterm-addon-fit.js",Content::Script(xterm_addon_fit_js))?;
-    let xterm_addon_web_links_js = include_bytes!("../extern/resources/xterm-addon-web-links.js");
-    inject_blob("xterm-addon-web-links.js",Content::Script(xterm_addon_web_links_js))?;
-    let xterm_css = include_bytes!("../extern/resources/xterm.css");
-    inject_blob("xterm.css", Content::Style(xterm_css))?;
-    inject_css("
-        .terminal{
-            width:100%;
-            border:2px solid #DDD;
-            min-height:90vh;
-        }
-    ")?;
-    Ok(())
-}
 
 pub fn inject_css(css : &str) -> Result<()> {
     let doc = document();
@@ -127,11 +110,20 @@ pub fn inject_blob(name : &str, content : Content) -> Result<()> {
 
     Ok(())
 }
-
+*/
 
 #[wasm_bindgen(start)]
 pub fn load_scripts() ->Result<()>{
-    load_scripts_impl().unwrap();
+
+
+    // let load = ;
+
+    loader::load_scripts_impl(Closure::<dyn FnMut(web_sys::CustomEvent)->Result<()>>::new(move|_: web_sys::CustomEvent|->Result<()>{
+        log_trace!("init_terminal...");
+        //inject_init_terminal()?;
+        init_terminal()?;
+        Ok(())
+    })).unwrap();
 
     Ok(())
 }

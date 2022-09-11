@@ -1,11 +1,15 @@
 use web_sys::Element;
-use crate::{Result, utils, log_trace};
+use workflow_dom::utils::*;
+use workflow_log::*;
+use crate::Result;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 use std::fmt::Debug;
 use std::fmt::Formatter;
-use crate::Listener;
+// use crate::Listener;
 use std::sync::{Mutex, Arc};
+use workflow_wasm::listener::Listener;
+use workflow_wasm::utils::*;
 
 /// #[wasm_bindgen(module = "/defined-in-js.js")]
 #[wasm_bindgen()]
@@ -72,7 +76,7 @@ pub struct Terminal{
 
 impl Terminal{
     pub fn new(parent:&Element)->Result<Arc<Terminal>>{
-        let element = utils::document().create_element("div")?;
+        let element = document().create_element("div")?;
         element.set_attribute("class", "terminal")?;
         parent.append_child(&element)?;
         let terminal = Terminal{
@@ -126,11 +130,11 @@ impl Terminal{
         let self_arc = Arc::new(self);
         let this = self_arc.clone();
         let listener = Listener::new(move |e|->Result<()>{
-            let term_key = utils::try_get_string(&e, "key")?;
+            let term_key = try_get_string(&e, "key")?;
             //log_trace!("on_key: {:?}, key:{}", e, key);
-            let dom_event = utils::js_value(&e, "domEvent")?;
-            let key_code = utils::try_get_u64_from_prop(&dom_event, "keyCode")?;
-            let key = utils::try_get_string(&dom_event, "key")?;
+            let dom_event = try_get_js_value(&e, "domEvent")?;
+            let key_code = try_get_u64_from_prop(&dom_event, "keyCode")?;
+            let key = try_get_string(&dom_event, "key")?;
             log_trace!("key_code: {}, key:{}", key_code, key);
             //term_.write(key);
             this.sink(key, term_key, e)?;
