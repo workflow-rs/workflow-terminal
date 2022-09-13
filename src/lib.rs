@@ -1,45 +1,85 @@
 // use js_sys::*;
 // use wasm_bindgen::JsCast;
-use wasm_bindgen::prelude::*;
+use cfg_if::cfg_if;
 // use web_sys::{Url,Blob};
-mod terminal;
-mod error;
+
+pub mod error;
+pub mod result;
+pub mod loader;
+pub mod cli;
+pub mod keys;
+pub mod cursor;
+
+cfg_if! {
+    if #[cfg(target_arch = "wasm32")] {
+        mod xterm;
+        pub use xterm::Terminal;
+        use std::sync::Arc;
+        
+        use workflow_dom::utils::body;
+        use wasm_bindgen::prelude::*;
+        use workflow_log::*;
+
+        #[wasm_bindgen(start)]
+        pub fn load_scripts() ->Result<()>{
+            loader::load_scripts_impl(Closure::<dyn FnMut(web_sys::CustomEvent)->Result<()>>::new(move|_: web_sys::CustomEvent|->Result<()>{
+                log_trace!("init_terminal...");
+                init_terminal()?;
+                Ok(())
+            })).unwrap();
+            Ok(())
+        }
+        
+        static mut TERMINAL : Option<Arc<Terminal>> = None;
+        pub fn init_terminal()->Result<()>{
+            let body_el = body()?;
+            let terminal = Terminal::new(&body_el)?;
+            unsafe { TERMINAL = Some(terminal); }
+            Ok(())
+        }
+
+    } else {
+        mod native;
+        pub use native::Terminal;
+
+        // ^ TODO load terminal
+        
+    }
+}
+
+
 // pub mod listener;
 // pub mod utils;
-pub mod loader;
 // use workflow_dom::*;
 
 //use error::Error;
 // pub use listener::Listener;
-pub use terminal::Terminal;
 // pub use utils::{body, document};
-use workflow_dom::utils::body;
-use std::sync::Arc;
 
 
-pub type Result<T> = std::result::Result<T, JsValue>;
+// pub type Result<T> = std::result::Result<T, JsValue>;
 
 // #[cfg(target_arch = "wasm32")]
-pub mod wasm {
-    use wasm_bindgen::prelude::*;
-    // use super::*;
-    #[wasm_bindgen]
-    extern "C" {
-        #[wasm_bindgen(js_namespace = console)]
-        pub fn log(s: &str);
-        #[wasm_bindgen(js_namespace = console)]
-        pub fn warn(s: &str);
-        #[wasm_bindgen(js_namespace = console)]
-        pub fn error(s: &str);
-    }
-}
+// pub mod wasm {
+//     use wasm_bindgen::prelude::*;
+//     // use super::*;
+//     #[wasm_bindgen]
+//     extern "C" {
+//         #[wasm_bindgen(js_namespace = console)]
+//         pub fn log(s: &str);
+//         #[wasm_bindgen(js_namespace = console)]
+//         pub fn warn(s: &str);
+//         #[wasm_bindgen(js_namespace = console)]
+//         pub fn error(s: &str);
+//     }
+// }
 
-#[macro_export]
-macro_rules! log_trace {
-    ($($t:tt)*) => (
-        crate::wasm::log(format_args!($($t)*).to_string().as_str())
-    )
-}
+// #[macro_export]
+// macro_rules! log_trace {
+//     ($($t:tt)*) => (
+//         crate::wasm::log(format_args!($($t)*).to_string().as_str())
+//     )
+// }
 
 /* 
 pub enum Content<'content> {
@@ -112,31 +152,6 @@ pub fn inject_blob(name : &str, content : Content) -> Result<()> {
 }
 */
 
-#[wasm_bindgen(start)]
-pub fn load_scripts() ->Result<()>{
-
-
-    // let load = ;
-
-    loader::load_scripts_impl(Closure::<dyn FnMut(web_sys::CustomEvent)->Result<()>>::new(move|_: web_sys::CustomEvent|->Result<()>{
-        log_trace!("init_terminal...");
-        //inject_init_terminal()?;
-        init_terminal()?;
-        Ok(())
-    })).unwrap();
-
-    Ok(())
-}
-
-static mut TERMINAL : Option<Arc<Terminal>> = None;
-
-//#[wasm_bindgen]
-pub fn init_terminal()->Result<()>{
-    let body_el = body()?;
-    let terminal = Terminal::new(&body_el)?;
-    unsafe { TERMINAL = Some(terminal); }
-    Ok(())
-}
 
 /*
 pub fn inject_init_terminal()->Result<()>{
