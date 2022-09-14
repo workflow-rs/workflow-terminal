@@ -2,7 +2,7 @@ use web_sys::Element;
 use workflow_dom::utils::*;
 use workflow_log::*;
 use crate::Result;
-use crate::cli::{Cli, TerminalTrait};
+use crate::cli::{Cli, Intake, TerminalTrait};
 use crate::keys::Key;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -11,6 +11,7 @@ use std::fmt::Formatter;
 use std::sync::{Mutex, Arc};
 use workflow_wasm::listener::Listener;
 use workflow_wasm::utils::*;
+use wasm_bindgen_futures::spawn_local;
 
 /// #[wasm_bindgen(module = "/defined-in-js.js")]
 #[wasm_bindgen()]
@@ -52,7 +53,8 @@ pub struct Terminal{
     pub element: Element,
     term:Term,
     listener: Arc<Mutex<Option<Listener<JsValue>>>>,
-    cli: Arc<Mutex<Option<Cli>>>
+    cli: Arc<Mutex<Option<Cli>>>,
+    intake: Arc<Mutex<Option<Intake>>>
 }
 
 #[derive(Debug)]
@@ -91,9 +93,11 @@ impl Terminal{
             element,
             listener: Arc::new(Mutex::new(None)),
             term: Self::create_term()?,
-            cli: Arc::new(Mutex::new(None))
+            cli: Arc::new(Mutex::new(None)),
+            intake: Arc::new(Mutex::new(None))
         };
         let term = terminal.init()?;
+        *(term.intake.lock().expect("Unable to lock term.intake")) =  Some(Intake::new(term.clone(), "$ ".to_string())?);
         Ok(term)
     }
 
@@ -145,7 +149,7 @@ impl Terminal{
             let key_code = try_get_u64_from_prop(&dom_event, "keyCode")?;
             let key = try_get_string(&dom_event, "key")?;
             log_trace!("key_code: {}, key:{}, ctl_key:{}", key_code, key, ctrl_key);
-            this.sink(SinkEvent::new(key, term_key, ctrl_key, alt_key, meta_key), e)?;
+            this.clone().sink(SinkEvent::new(key, term_key, ctrl_key, alt_key, meta_key), e)?;
             
             Ok(())
         });
@@ -159,7 +163,7 @@ impl Terminal{
         Ok(self_arc_clone)
     }
 
-    fn sink(self: &Arc<Self>, e:SinkEvent, _e:JsValue)->Result<()>{
+    fn sink(self: Arc<Self>, e:SinkEvent, _e:JsValue)->Result<()>{
 
         let key = 
 
@@ -203,12 +207,13 @@ impl Terminal{
             }
         };
 
-        let mut locked = self.cli.lock().expect("Unable to lock terminal.cli for intake");
         log_trace!("e3:{:?}", e);
-        if let Some(cli) = locked.as_mut(){
-            log_trace!("cli.intake: {:?}, {}", key, e.term_key);
-            cli.intake(key, e.term_key)?;
-        }
+        spawn_local(async move {
+            let mut locked = self.intake.lock().expect("Unable to lock terminal.intake for intake");
+            if let Some(intake) = locked.as_mut(){
+                let _r = intake.intake(key, e.term_key).await;
+            }
+        });
 
         Ok(())
     }
@@ -219,8 +224,16 @@ unsafe impl Send for Terminal{}
 unsafe impl Sync for Terminal{}
 
 impl TerminalTrait for Terminal{
-    fn write(&self, s: String) -> Result<()> {
-        self.term.write(s);
+
+    fn prompt(&self) -> Result<()>{
+        let mut locked = self.intake.lock().expect("Unable to lock terminal.intake");
+        if let Some(intake) = locked.as_mut(){
+            intake.prompt()?;
+        }
+        Ok(())
+    }
+    fn write(&self, text: String) -> Result<()> {
+        self.term.write(text);
         Ok(())
     }
 
@@ -233,5 +246,15 @@ impl TerminalTrait for Terminal{
     fn start(&self)-> Result<()> {
         //self._start()?;
         Ok(())
+    }
+
+    fn set_prompt(&self, prompt:String)-> Result<()>{
+        let mut locked = self.intake.lock().expect("Unable to lock terminal.intake");
+        if let Some(intake) = locked.as_mut(){
+            intake.set_prompt(prompt)?;
+        }
+        
+        Ok(())
+
     }
 }

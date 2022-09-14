@@ -12,7 +12,7 @@ pub mod cursor;
 
 pub use result::Result;
 pub use cli::Cli;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;//, Mutex};
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
@@ -61,8 +61,9 @@ cfg_if! {
         #[wasm_bindgen(js_name="testCli")]
         pub fn test_cli()->Result<()>{
             let term = get_terminal()?;
-            let prompt = Arc::new(Mutex::new("$ ".to_string()));
+            let prompt = "$ ".to_string();
             let cli = Cli::new(term, prompt)?;
+            cli.prompt()?;
             unsafe { CLI = Some(Arc::new(cli)); }
             Ok(())
         }

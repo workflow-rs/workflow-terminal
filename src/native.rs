@@ -6,32 +6,34 @@ use termion::raw::IntoRawMode;
 use termion::raw::RawTerminal;
 use std::io::{Write, Stdout, Stdin, stdout, stdin};
 use workflow_log::*;
-use crate::cli::TerminalTrait;
+use crate::cli::{Intake, TerminalTrait};
 use crate::Cli;
 use crate::keys::Key;
 use crate::Result;
-use std::sync::{Arc,Mutex};
+use std::sync::{Arc, Mutex};
+use async_std::task;
+//use async_std::sync::Mutex;
 
 
 pub struct Terminal {
     cli: Arc<Mutex<Option<Cli>>>,
+    intake: Arc<Mutex<Option<Intake>>>,
     //stdout:RawTerminal<Stdout>,
     //stdin:Stdin
 }
 
 impl Terminal {
-    pub fn new() -> Result<Terminal> {
+    pub fn new() -> Result<Arc<Terminal>> {
         let stdout = stdout().into_raw_mode().unwrap();
         //let stdin = stdin();
         let mut terminal = Terminal {
             cli: Arc::new(Mutex::new(None)),
-            //stdout,
-            //stdin
+            intake: Arc::new(Mutex::new(None))
         };
 
-        terminal.init()?;
-
-        Ok(terminal)
+        let term = terminal.init()?;
+        *(term.intake.lock().await) =  Some(Intake::new(term.clone(), "$ ".to_string())?);
+        Ok(term)
     }
 
     fn _write<S>(&self, s:S)->Result<()> where S:Into<String>{
@@ -50,7 +52,8 @@ impl Terminal {
         Ok(())
     }
 
-    pub fn init(&mut self)->Result<()> {
+    pub fn init(self)->Result<Arc<Self>> {
+        let this = Arc::new(self);
 
         //let stdin = stdin();
 
@@ -70,7 +73,7 @@ impl Terminal {
         write!(self.stdout, "sssssssss").unwrap();
         */
 
-        Ok(())
+        Ok(this)
     }
 
     fn _start(&self)->Result<()> {
@@ -126,12 +129,13 @@ impl Terminal {
             };
 
             //print!("A");
-            let mut locked = self.cli.lock().expect("Unable to lock terminal.cli for intake");
-            
-            if let Some(cli) = locked.as_mut(){
-                //log_trace!("cli.intake: {:?}", key);
-                cli.intake(key, "vXX".to_string())?;
-            }
+            task::spawn(async move{
+                let mut locked = self.intake.lock().expect("Unable to lock terminal.cli for intake");
+                if let Some(intake) = locked.as_mut(){
+                    //log_trace!("cli.intake: {:?}", key);
+                    let _r = intake.intake(key, "".to_string()).await;
+                }
+            });
 
 
             //self.stdout.flush().unwrap();
@@ -145,6 +149,14 @@ impl Terminal {
 //impl Sync for Terminal{}
 
 impl TerminalTrait for Terminal{
+    fn prompt(&self) -> Result<()>{
+        let mut locked = self.intake.lock().expect("Unable to lock terminal.intake");
+        if let Some(intake) = locked.as_mut(){
+            intake.prompt()?;
+        }
+        Ok(())
+    }
+
     fn write(&self, s: String) -> Result<()> {
         self._write(s)?;
         Ok(())
@@ -159,5 +171,15 @@ impl TerminalTrait for Terminal{
     fn start(&self)-> Result<()> {
         self._start()?;
         Ok(())
+    }
+
+    fn set_prompt(&self, prompt:String)-> Result<()>{
+        let mut locked = self.intake.lock().expect("Unable to lock terminal.intake");
+        if let Some(intake) = locked.as_mut(){
+            intake.set_prompt(prompt)?;
+        }
+        
+        Ok(())
+
     }
 }
