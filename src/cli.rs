@@ -98,14 +98,8 @@ impl Cli {
         self.inner.lock()
     }
 
-    pub fn write_vec(&self, str_list:Vec<String>) ->Result<()> {
+    fn write_vec(&self, mut str_list:Vec<String>) ->Result<()> {
         let data = self.inner()?;
-        self.write_vec_with_data(str_list, &data)?;
-        Ok(())
-    }
-    fn write_vec_with_data(&self, mut str_list:Vec<String>, data:&MutexGuard<Inner>) ->Result<()> {
-        //log_trace!("write_vec: 1");
-        //log_trace!("write_vec: 2");
 		
         str_list.push("\r\n".to_string());
         
@@ -124,9 +118,7 @@ impl Cli {
         Ok(())
 	}
 
-    fn write_with_data<S>(&self, s : S, _data:&MutexGuard<Inner>)->Result<()> where S : Into<String> {
-        //let s:String = s.into();
-		//self.write_vec_with_data(Vec::from([s]), data)?;
+    fn _write<S>(&self, s : S)->Result<()> where S : Into<String> {
         self.term.write(s.into())?;
         Ok(())
     }
@@ -178,8 +170,8 @@ impl Cli {
         data.buffer = vec;
         //log_trace!("inject: data.buffer: {:#?}", data.buffer);
         //log_trace!("inject: removed: {:#?}", removed);
-        self.trail(&data, true, false, 1)?;
-        //log_trace!("after self.trail");
+        self.trail(data.cursor, &data.buffer, true, false, 1)?;
+
         data.cursor = data.cursor+1;
         Ok(())
     }
@@ -196,7 +188,7 @@ impl Cli {
                 let mut vec = data.buffer.clone();
                 vec.splice(data.cursor..(data.cursor+1), []);
                 data.buffer = vec;
-                self.trail(&data, true, true, 0)?;
+                self.trail(data.cursor, &data.buffer, true, true, 0)?;
             },
             Key::ArrowUp =>{
                 let mut data = self.inner()?;
@@ -214,7 +206,7 @@ impl Cli {
                 data.history_index = data.history_index-1;
                 
                 data.buffer = data.history[data.history_index].clone();
-                self.write_with_data(format!("\x1B[2K\r{}{}", self.prompt_str(), data.buffer.join("")), &data)?;
+                self._write(format!("\x1B[2K\r{}{}", self.prompt_str(), data.buffer.join("")))?;
                 data.cursor = data.buffer.len();
                 
             }
@@ -233,7 +225,7 @@ impl Cli {
                     data.buffer = data.history[data.history_index].clone();
                 }
                 
-                self.write_with_data(format!("\x1B[2K\r{}{}", self.prompt_str(), data.buffer.join("")), &data)?;
+                self._write(format!("\x1B[2K\r{}{}", self.prompt_str(), data.buffer.join("")))?;
                 data.cursor = data.buffer.len();
             }
             Key::ArrowLeft =>{
@@ -242,13 +234,13 @@ impl Cli {
                     return Ok(());
                 }
                 data.cursor = data.cursor-1;
-                self.write_with_data(Left(1), &data)?;
+                self._write(Left(1))?;
             }
             Key::ArrowRight =>{
                 let mut data = self.inner()?;
                 if data.cursor < data.buffer.len() {
                     data.cursor = data.cursor+1;
-                    self.write_with_data(Right(1), &data)?;
+                    self._write(Right(1))?;
                 }
             }
             // "Inject"=>{
@@ -264,7 +256,7 @@ impl Cli {
                     let buffer = data.buffer.clone();
                     let length = data.history.len();
 
-                    self.write_with_data("\r\n", &data)?;
+                    self._write("\r\n")?;
                     data.buffer = Vec::new();
                     data.cursor = 0;
 
@@ -317,19 +309,19 @@ impl Cli {
         Ok(())
     }
 
-    fn trail(&self, data:&MutexGuard<Inner>, rewind: bool, erase_last : bool, offset : usize) ->Result<()>{
-		let mut tail = data.buffer[data.cursor..].join("");
+    fn trail(&self, cursor:usize, buffer:&Vec<String>, rewind: bool, erase_last : bool, offset : usize) ->Result<()>{
+		let mut tail = buffer[cursor..].join("");
         if erase_last{
             tail = tail+" ";
         }
-		self.write_with_data(&tail, data)?;
+		self._write(&tail)?;
         if rewind{
             let mut l = tail.len();
             if offset > 0{
                 l = l-offset;
             }
             for _ in 0..l{
-                self.write_with_data("\x08", data)?;//backspace
+                self._write("\x08")?;//backspace
             }
         }
         Ok(())

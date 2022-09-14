@@ -15,18 +15,18 @@ use std::sync::{Arc,Mutex};
 
 pub struct Terminal {
     cli: Arc<Mutex<Option<Cli>>>,
-    stdout:RawTerminal<Stdout>,
-    stdin:Stdin
+    //stdout:RawTerminal<Stdout>,
+    //stdin:Stdin
 }
 
 impl Terminal {
     pub fn new() -> Result<Terminal> {
         let stdout = stdout().into_raw_mode().unwrap();
-        let stdin = stdin();
+        //let stdin = stdin();
         let mut terminal = Terminal {
             cli: Arc::new(Mutex::new(None)),
-            stdout,
-            stdin
+            //stdout,
+            //stdin
         };
 
         terminal.init()?;
@@ -36,7 +36,7 @@ impl Terminal {
 
     fn _write<S>(&self, s:S)->Result<()> where S:Into<String>{
         print!("{}", s.into());
-        let mut stdout = stdout().into_raw_mode().unwrap();
+        //let mut stdout = stdout().into_raw_mode().unwrap();
         /*write!(stdout,
             //"{}{}{}{}",
             "{}{}",
@@ -46,14 +46,15 @@ impl Terminal {
             //termion::cursor::Hide
             )
             .unwrap();*/
-        stdout.flush().unwrap();
+        //stdout.flush().unwrap();
         Ok(())
     }
 
     pub fn init(&mut self)->Result<()> {
 
-        let stdin = stdin();
+        //let stdin = stdin();
 
+        /*
         write!(self.stdout,
             "{}{}q to exit. Type stuff, use alt, and so on.{}",
             termion::clear::All,
@@ -67,6 +68,7 @@ impl Terminal {
         write!(self.stdout, "{}", termion::cursor::Show).unwrap();
 
         write!(self.stdout, "sssssssss").unwrap();
+        */
 
         Ok(())
     }
@@ -87,7 +89,12 @@ impl Terminal {
             match c.unwrap() {
                 K::Char('q') => break,
                 K::Char(c) => {//println!("{}", c);
-                    Key::Char(c)
+                    if c == '\n' || c == '\r'{
+                        //print!("enter: {}", c);
+                        Key::Enter
+                    }else{
+                        Key::Char(c)
+                    }
                 },
                 K::Alt(c) => {//println!("^{}", c)
                     Key::Alt(c)
@@ -134,8 +141,8 @@ impl Terminal {
     }
 }
 
-unsafe impl Send for Terminal{}
-unsafe impl Sync for Terminal{}
+//impl Send for Terminal{}
+//impl Sync for Terminal{}
 
 impl TerminalTrait for Terminal{
     fn write(&self, s: String) -> Result<()> {
