@@ -11,8 +11,11 @@ pub mod keys;
 pub mod cursor;
 
 pub use result::Result;
-pub use cli::Cli;
+pub use cli::{Cli, Handler, HandleResult};
 use std::sync::{Arc, Mutex};
+use std::future::Future;
+use std::pin::Pin;
+use std::{thread, time};
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
@@ -21,6 +24,11 @@ cfg_if! {
         use workflow_dom::utils::body;
         use wasm_bindgen::prelude::*;
         use workflow_log::*;
+        use wasm_bindgen_futures::spawn_local;
+
+        pub fn spawn<F>(future: F) where F: Future<Output = ()> + 'static{
+            spawn_local(future)
+        }
 
         #[wasm_bindgen(start)]
         pub fn load_scripts() ->Result<()>{
@@ -44,6 +52,10 @@ cfg_if! {
         mod native;
         pub use native::Terminal;
 
+        pub fn spawn<F>(future: F) where F: Future<Output = ()> + 'static{
+            //spawn_local(future)
+        }
+
         // ^ TODO load terminal
         
     }
@@ -57,13 +69,41 @@ cfg_if! {
             Ok(term.clone())
         }
 
+        struct CliHandler{
+            cli:Arc<Cli>
+        }
+
+        impl CliHandler{
+            fn new(cli:Arc<Cli>)->Self{
+                Self{cli}
+            }
+        }
+
+        impl Handler for CliHandler{
+            fn handle(self: Arc<Self>, cmd:String)->HandleResult {
+                let this = self.clone();
+                Box::pin(async move{
+                    log_trace!("cmd:{}", cmd);
+                    //let five_sec = time::Duration::from_millis(5000);
+                    //thread::sleep(five_sec);
+                    this.cli.write("Hi from handler")?;
+                    log_trace!("sleep - timeout");
+                    Ok(())
+                })
+            }
+        }
+
         static mut CLI : Option<Arc<Cli>> = None;
         #[wasm_bindgen(js_name="testCli")]
         pub fn test_cli()->Result<()>{
             let term = get_terminal()?;
             let prompt = Arc::new(Mutex::new("$ ".to_string()));
-            let cli = Cli::new(term, prompt)?;
-            unsafe { CLI = Some(Arc::new(cli)); }
+            let cli = Arc::new(Cli::new(term, prompt)?);
+            cli.prompt()?;
+            cli.write("TESTING CLI...")?;
+            cli.set_handler(Arc::new(CliHandler::new(cli.clone())))?;
+
+            unsafe { CLI = Some(cli); }
             Ok(())
         }
     }

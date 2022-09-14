@@ -11,6 +11,12 @@ use workflow_log::*;
 use crate::result::Result;
 use crate::keys::Key;
 use crate::cursor::*;
+use crate::spawn;
+use std::future::Future;
+use std::pin::Pin;
+
+pub type HandleResult = Pin<Box<dyn Future<Output = Result<()>>>>;
+
 
 
 #[derive(Debug)]
@@ -47,6 +53,24 @@ pub trait TerminalTrait : Sync + Send {
     //fn input_handler(&self, h:Box<dyn FnMut(TerminalEvent)-> Result<()>>)-> Result<()>;
 }
 
+pub trait Handler{
+    //fn handle(&self, cmd:String)->Result<()>;
+
+    fn handle(self: Arc<Self>, cmd:String)->HandleResult;
+}
+
+struct DefaultHandler{
+
+}
+
+impl Handler for DefaultHandler{
+    fn handle(self: Arc<Self>, _cmd:String)->HandleResult{
+        Box::pin(async move{
+            Ok(())
+        })
+    }
+}
+
 
 #[derive(Clone)]
 pub struct Cli {
@@ -55,6 +79,7 @@ pub struct Cli {
     // term : Arc<Mutex<Arc<dyn Terminal>>>,
     term : Arc<dyn TerminalTrait>,
     prompt : Arc<Mutex<String>>,
+    handler: Arc<Mutex<Arc<dyn Handler>>>,
 }
 
 impl Cli {
@@ -63,16 +88,25 @@ impl Cli {
         term : Arc<dyn TerminalTrait>,
         prompt : Arc<Mutex<String>>,
     ) -> Result<Cli> {
+
         let cli = Cli {
             inner : Arc::new(Mutex::new(Inner::new())),
             running : Arc::new(AtomicBool::new(false)),
             term,
-            prompt
+            prompt,
+            handler: Arc::new(Mutex::new(Arc::new(DefaultHandler{}))),
         };
 
         cli.init()?;
 
         Ok(cli)
+    }
+
+    
+    pub fn set_handler(&self, h: Arc<dyn Handler>)->Result<()>{
+        let mut locked = self.handler.lock().expect("Unable to lock handler");
+        *locked = h;
+        Ok(())
     }
 
     fn init(&self)->Result<()>{
@@ -183,7 +217,7 @@ impl Cli {
                 if data.cursor == 0{
                     return Ok(());
                 }
-                self.write("\x08")?;
+                self._write("\x08")?;
                 data.cursor = data.cursor - 1;
                 let mut vec = data.buffer.clone();
                 vec.splice(data.cursor..(data.cursor+1), []);
@@ -256,7 +290,7 @@ impl Cli {
                     let buffer = data.buffer.clone();
                     let length = data.history.len();
 
-                    self._write("\r\n")?;
+                    //self._write("\r\n")?;
                     data.buffer = Vec::new();
                     data.cursor = 0;
 
@@ -286,11 +320,10 @@ impl Cli {
 
                 if let Some(cmd) = cmd {
                     self.running.store(true, Ordering::SeqCst);
-                    self.digest(&cmd)?;
+                    self.digest(cmd)?;
                     self.running.store(false, Ordering::SeqCst);
-
-                    self.prompt()?;
                 }
+                self.prompt()?;
             },
             Key::Alt(_c)=>{
                 return Ok(());
@@ -327,8 +360,13 @@ impl Cli {
         Ok(())
 	}
 
-    fn digest(&self, cmd: &str) -> Result<()> {
-        log_trace!("Digesting: {}", cmd);
+    fn digest(&self, cmd: String) -> Result<()> {
+        let this = self.clone();
+        spawn(async move {
+            log_trace!("Digesting: {}", cmd);
+            let locked = this.handler.lock().expect("Unable to unlock handler");
+            let _r = locked.clone().handle(cmd).await;
+        });
         Ok(())
     }
 
