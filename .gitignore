@@ -1,5 +1,6 @@
-/target
+**/target
 /Cargo.lock
 /extern/*
 /root/workflow-terminal
 analyzer-target
+examples/native/Cargo.lock

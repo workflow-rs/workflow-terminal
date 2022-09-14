@@ -10,19 +10,21 @@ pub mod cli;
 pub mod keys;
 pub mod cursor;
 
+pub use result::Result;
+pub use cli::Cli;
+use std::sync::{Arc, Mutex};
+
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         mod xterm;
         pub use xterm::Terminal;
-        use std::sync::Arc;
-        
         use workflow_dom::utils::body;
         use wasm_bindgen::prelude::*;
         use workflow_log::*;
 
         #[wasm_bindgen(start)]
         pub fn load_scripts() ->Result<()>{
-            loader::load_scripts_impl(Closure::<dyn FnMut(web_sys::CustomEvent)->Result<()>>::new(move|_: web_sys::CustomEvent|->Result<()>{
+            loader::load_scripts_impl(Closure::<dyn FnMut(web_sys::CustomEvent)->std::result::Result<(), JsValue>>::new(move|_|->std::result::Result<(), JsValue>{
                 log_trace!("init_terminal...");
                 init_terminal()?;
                 Ok(())
@@ -47,6 +49,25 @@ cfg_if! {
     }
 }
 
+
+cfg_if! {
+    if #[cfg(all(target_arch = "wasm32"))] {
+        pub fn get_terminal() -> Result<Arc<Terminal>> {
+            let term = unsafe { (&TERMINAL).as_ref().unwrap().clone() };
+            Ok(term.clone())
+        }
+
+        static mut CLI : Option<Arc<Cli>> = None;
+        #[wasm_bindgen(js_name="testCli")]
+        pub fn test_cli()->Result<()>{
+            let term = get_terminal()?;
+            let prompt = Arc::new(Mutex::new("$ ".to_string()));
+            let cli = Cli::new(term, prompt)?;
+            unsafe { CLI = Some(Arc::new(cli)); }
+            Ok(())
+        }
+    }
+}
 
 // pub mod listener;
 // pub mod utils;
@@ -162,3 +183,11 @@ pub fn inject_init_terminal()->Result<()>{
     Ok(())
 }
 */
+
+#[cfg(test)]
+mod test{
+    #[test]
+    pub fn cli(){
+        println!("cli test1");
+    }
+}

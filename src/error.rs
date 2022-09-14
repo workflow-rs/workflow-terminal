@@ -32,3 +32,13 @@ where T : std::fmt::Debug
         Error::PoisonError(format!("{:?}", err))
     }
 }
+
+
+impl From<Error> for JsValue{
+    fn from(err: Error) -> JsValue {
+        match err {
+            Error::Str(s) | Error::PoisonError(s)=> JsValue::from(s),
+            Error::JsValue(v)=>v
+        }
+    }
+}

@@ -4,7 +4,11 @@
             import * as workflow from '/workflow-terminal/workflow-terminal.js';
             (async () => {
                 const wasm = await workflow.default('/workflow-terminal/workflow-terminal_bg.wasm');
-                window.terminal_wasm = wasm;
+                //window.terminal_wasm = wasm;
+                setTimeout(()=>{
+                    console.log("wasm.testCli....");
+                    wasm.testCli();
+                }, 1000)
             })();
         </script>
     </head>

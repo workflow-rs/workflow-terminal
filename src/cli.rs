@@ -32,8 +32,19 @@ impl Inner {
     }
 }
 
-pub trait Terminal : Sync + Send {
-    fn write(&mut self, s: String) -> Result<()>;
+/*
+pub struct TerminalEvent{
+    pub key:Key,
+    pub key_str:String
+}
+*/
+
+
+pub trait TerminalTrait : Sync + Send {
+    fn write(&self, s: String) -> Result<()>;
+    fn input_handler(&self, h:Cli)-> Result<()>;
+    fn start(&self)-> Result<()>;
+    //fn input_handler(&self, h:Box<dyn FnMut(TerminalEvent)-> Result<()>>)-> Result<()>;
 }
 
 
@@ -42,32 +53,89 @@ pub struct Cli {
     inner : Arc<Mutex<Inner>>,
     running: Arc<AtomicBool>,
     // term : Arc<Mutex<Arc<dyn Terminal>>>,
-    term : Arc<dyn Terminal>,
+    term : Arc<dyn TerminalTrait>,
     prompt : Arc<Mutex<String>>,
 }
 
 impl Cli {
 
     pub fn new(
-        term : Arc<dyn Terminal>,
+        term : Arc<dyn TerminalTrait>,
         prompt : Arc<Mutex<String>>,
-    ) -> Cli {
-        Cli {
+    ) -> Result<Cli> {
+        let cli = Cli {
             inner : Arc::new(Mutex::new(Inner::new())),
             running : Arc::new(AtomicBool::new(false)),
-            // term : Arc::new(Mutex::new(term)),
             term,
-            prompt : prompt,
-        }
+            prompt
+        };
+
+        cli.init()?;
+
+        Ok(cli)
+    }
+
+    fn init(&self)->Result<()>{
+        let this = self.clone();
+        /*
+        self.term.input_handler(Box::new(move |e:TerminalEvent|->Result<()>{
+            this.intake(e.key, e.key_str);
+            Ok(())
+        }))?;
+        */
+        self.term.input_handler(this)?;
+
+
+        Ok(())
+    }
+
+    pub fn start(&self)->Result<()>{
+        self.term.start()?;
+        Ok(())
     }
 
     pub fn inner(&self) -> LockResult<MutexGuard<'_, Inner>> {
         self.inner.lock()
     }
 
-    pub fn write<S>(&self, s : S) where S : Into<String> {
-        self.term.write(s.into());
+    pub fn write_vec(&self, str_list:Vec<String>) ->Result<()> {
+        let data = self.inner()?;
+        self.write_vec_with_data(str_list, &data)?;
+        Ok(())
     }
+    fn write_vec_with_data(&self, mut str_list:Vec<String>, data:&MutexGuard<Inner>) ->Result<()> {
+        //log_trace!("write_vec: 1");
+        //log_trace!("write_vec: 2");
+		
+        str_list.push("\r\n".to_string());
+        
+		if self.running.load(Ordering::SeqCst) {
+			self.term.write(str_list.join(""))?;
+		}else {
+			self.term.write(format!("\x1B[2K\r{}", str_list.join("")))?;
+			let prompt = format!("{}{}", self.prompt_str(), data.buffer.join(""));
+			self.term.write(prompt)?;
+			let l = data.buffer.len() - data.cursor;
+			for _ in 0..l{
+				self.term.write("\x08".to_string())?;
+            }
+		}
+
+        Ok(())
+	}
+
+    fn write_with_data<S>(&self, s : S, _data:&MutexGuard<Inner>)->Result<()> where S : Into<String> {
+        //let s:String = s.into();
+		//self.write_vec_with_data(Vec::from([s]), data)?;
+        self.term.write(s.into())?;
+        Ok(())
+    }
+
+	pub fn write<S>(&self, s : S)-> Result<()>  where S : Into<String> {
+        let s:String = s.into();
+		self.write_vec(Vec::from([s]))?;
+        Ok(())
+	}
 
     // pub fn term(&self) -> LockResult<MutexGuard<'_, Arc<dyn Terminal>>> {
     //     self.term.lock()
@@ -77,18 +145,27 @@ impl Cli {
         return self.prompt.lock().unwrap().clone();
     }
 
-    // fn prompt_str(&self) -> String{
-	// 	format!("{} ", self.prompt_prefix)
-	// }
-
-    fn prompt(&self) -> Result<()> {
-        let data = self.inner()?;
+    /*
+    pub fn _prompt(&self, data:&mut MutexGuard<Inner>) -> Result<()> {
 		data.cursor = 0;
 		data.buffer = Vec::new();
 
-		self.term.write(format!("\r\n{}", self.prompt_str()));
-		//self.promptLength = ("\r\n"+prompt).length;
+		self.term.write(format!("\r\n{}", self.prompt_str()))?;
 
+        Ok(())
+	}
+    */
+
+    pub fn prompt(&self) -> Result<()> {
+        /*
+        let mut data = self.inner()?;
+		self._prompt(&mut data)?;
+        */
+        let mut data = self.inner()?;
+        data.cursor = 0;
+		data.buffer = Vec::new();
+
+		self.term.write(format!("\r\n{}", self.prompt_str()))?;
         Ok(())
 	}
 
@@ -97,39 +174,38 @@ impl Cli {
     fn inject(&self, term_key : String) -> Result<()> {
         let mut data = self.inner()?;
         let mut vec = data.buffer.clone();
-        log_trace!("inject: vec: {}", vec.join(""));
         let _removed:Vec<String> = vec.splice(data.cursor..(data.cursor+0), [term_key]).collect();
         data.buffer = vec;
         //log_trace!("inject: data.buffer: {:#?}", data.buffer);
         //log_trace!("inject: removed: {:#?}", removed);
-        self.trail(data.cursor, &data.buffer, true, false, 1);
+        self.trail(&data, true, false, 1)?;
+        //log_trace!("after self.trail");
         data.cursor = data.cursor+1;
         Ok(())
     }
 
-    pub fn intake(&self, key : Key, term_key : String) -> Result<()> {
+    pub fn intake(&self, key : Key, _term_key : String) -> Result<()> {
         match key {
             Key::Backspace => {
                 let mut data = self.inner()?;
                 if data.cursor == 0{
                     return Ok(());
                 }
-                self.write("\x08");
+                self.write("\x08")?;
                 data.cursor = data.cursor - 1;
                 let mut vec = data.buffer.clone();
                 vec.splice(data.cursor..(data.cursor+1), []);
                 data.buffer = vec;
-                self.trail(data.cursor, &data.buffer, true, true, 0);
+                self.trail(&data, true, true, 0)?;
             },
             Key::ArrowUp =>{
                 let mut data = self.inner()?;
-                //log_trace!("ArrowUp");
                 if data.history_index == 0{
                     return Ok(());
                 }
                 let current_buffer = data.buffer.clone();
                 let index = data.history_index;
-                log_trace!("ArrowUp: index {}, data.history.len(): {}", index, data.history.len());
+                //log_trace!("ArrowUp: index {}, data.history.len(): {}", index, data.history.len());
                 if data.history.len() <= index{
                     data.history.push(current_buffer);
                 }else{
@@ -138,13 +214,12 @@ impl Cli {
                 data.history_index = data.history_index-1;
                 
                 data.buffer = data.history[data.history_index].clone();
-                self.write(format!("\x1B[2K\r{}{}", self.prompt_str(), data.buffer.join("")));
+                self.write_with_data(format!("\x1B[2K\r{}{}", self.prompt_str(), data.buffer.join("")), &data)?;
                 data.cursor = data.buffer.len();
                 
             }
             Key::ArrowDown =>{
                 let mut data = self.inner()?;
-                //log_trace!("ArrowDown");
                 let len =  data.history.len();
                 if data.history_index >= len{
                     return Ok(());
@@ -158,31 +233,29 @@ impl Cli {
                     data.buffer = data.history[data.history_index].clone();
                 }
                 
-                self.write(format!("\x1B[2K\r{}{}", self.prompt_str(), data.buffer.join("")));
+                self.write_with_data(format!("\x1B[2K\r{}{}", self.prompt_str(), data.buffer.join("")), &data)?;
                 data.cursor = data.buffer.len();
             }
             Key::ArrowLeft =>{
                 let mut data = self.inner()?;
-                //log_trace!("ArrowLeft");
                 if data.cursor == 0{
                     return Ok(());
                 }
                 data.cursor = data.cursor-1;
-                // self.term.write(term_key);
-                self.write(Left(1));
+                self.write_with_data(Left(1), &data)?;
             }
             Key::ArrowRight =>{
                 let mut data = self.inner()?;
-                //log_trace!("ArrowRight");
                 if data.cursor < data.buffer.len() {
                     data.cursor = data.cursor+1;
-                    self.write(Right(1));
+                    self.write_with_data(Right(1), &data)?;
                 }
             }
             // "Inject"=>{
             //     inject(term_key);
             // }
             Key::Enter => {
+                //log_trace!("Key::Enter:cli");
                 let cmd = {
                     let mut data = self.inner()?;
                     //e.stopPropagation();
@@ -191,7 +264,7 @@ impl Cli {
                     let buffer = data.buffer.clone();
                     let length = data.history.len();
 
-                    self.write("\r\n");
+                    self.write_with_data("\r\n", &data)?;
                     data.buffer = Vec::new();
                     data.cursor = 0;
 
@@ -212,7 +285,7 @@ impl Cli {
                         }
                         data.history_index = data.history_index+1;
 
-                        //log_trace!("length222:{length},  history_index:{}", data.history_index);
+                        //log_trace!("length222:{length},  history_index:{}, {}", data.history_index, cmd);
                         Some(cmd)
                     } else {
                         None
@@ -220,22 +293,21 @@ impl Cli {
                 };
 
                 if let Some(cmd) = cmd {
-                // data.running = true;
                     self.running.store(true, Ordering::SeqCst);
-                    self.digest(&cmd);
+                    self.digest(&cmd)?;
                     self.running.store(false, Ordering::SeqCst);
-                }
 
-                // self._prompt(&mut data);
+                    self.prompt()?;
+                }
+            },
+            Key::Alt(_c)=>{
+                return Ok(());
+            },
+            Key::Ctrl(_c)=>{
+                return Ok(());
             },
             Key::Char(ch)=>{
-                // let mut data = self.inner()?;
-
-                let printable = true; //TODO
-                if printable {
-                    self.inject(ch.to_string());
-                    // self.inject(term_key);
-                }
+                self.inject(ch.to_string())?;
             },
             _ => {
                 return Ok(());
@@ -245,21 +317,22 @@ impl Cli {
         Ok(())
     }
 
-    fn trail(&self, x:usize, buffer:&Vec<String>, rewind: bool, erase_last : bool, offset : usize) {
-		let mut tail = buffer[x..].join("");
+    fn trail(&self, data:&MutexGuard<Inner>, rewind: bool, erase_last : bool, offset : usize) ->Result<()>{
+		let mut tail = data.buffer[data.cursor..].join("");
         if erase_last{
             tail = tail+" ";
         }
-		self.write(&tail);
+		self.write_with_data(&tail, data)?;
         if rewind{
             let mut l = tail.len();
             if offset > 0{
                 l = l-offset;
             }
             for _ in 0..l{
-                self.write("\x08");//backspace
+                self.write_with_data("\x08", data)?;//backspace
             }
         }
+        Ok(())
 	}
 
     fn digest(&self, cmd: &str) -> Result<()> {

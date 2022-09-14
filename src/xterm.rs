@@ -2,12 +2,12 @@ use web_sys::Element;
 use workflow_dom::utils::*;
 use workflow_log::*;
 use crate::Result;
+use crate::cli::{Cli, TerminalTrait};
 use crate::keys::Key;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 use std::fmt::Debug;
 use std::fmt::Formatter;
-// use crate::Listener;
 use std::sync::{Mutex, Arc};
 use workflow_wasm::listener::Listener;
 use workflow_wasm::utils::*;
@@ -48,31 +48,38 @@ impl Term{
     }
 }
 
-// pub struct Data{
-//     buffer:Vec<String>,
-//     history:Vec<Vec<String>>,
-//     cursor:usize,
-//     history_index:usize,
-//     running:bool
-// }
-// impl Data{
-//     fn new()->Self{
-//         Self{
-//             buffer:Vec::new(),
-//             history:Vec::new(),
-//             cursor:0,
-//             history_index:0,
-//             running:false
-//         }
-//     }
-// }
-
 pub struct Terminal{
     pub element: Element,
     term:Term,
-    // prompt_prefix:String,
     listener: Arc<Mutex<Option<Listener<JsValue>>>>,
-    // data: Arc<Mutex<Data>>
+    cli: Arc<Mutex<Option<Cli>>>
+}
+
+#[derive(Debug)]
+pub struct SinkEvent{
+    key:String,
+    term_key:String,
+    ctrl_key:bool,
+    alt_key:bool,
+    meta_key:bool,
+}
+
+impl SinkEvent{
+    fn new(
+        key:String,
+        term_key:String,
+        ctrl_key:bool,
+        alt_key:bool,
+        meta_key:bool,
+    )->Self{
+        Self{
+            key,
+            term_key,
+            ctrl_key,
+            alt_key,
+            meta_key, 
+        }
+    }
 }
 
 impl Terminal{
@@ -84,8 +91,7 @@ impl Terminal{
             element,
             listener: Arc::new(Mutex::new(None)),
             term: Self::create_term()?,
-            data: Arc::new(Mutex::new(Data::new())),
-            prompt_prefix:"$".to_string(),
+            cli: Arc::new(Mutex::new(None))
         };
         let term = terminal.init()?;
         Ok(term)
@@ -122,172 +128,110 @@ impl Terminal{
 
     pub fn init(self)->Result<Arc<Self>>{
         log_trace!("Terminal.init()....");
-        //let terminal_js = utils::js_value(&window(), "Terminal")?;
-        //log_trace!("terminal_js: {:?}", terminal_js);
 
         self.term.open(&self.element);
 
 
         let self_arc = Arc::new(self);
         let this = self_arc.clone();
-        let listener = Listener::new(move |e|->Result<()>{
+        let listener = Listener::new(move |e|->std::result::Result<(), JsValue>{
             let term_key = try_get_string(&e, "key")?;
             //log_trace!("on_key: {:?}, key:{}", e, key);
             let dom_event = try_get_js_value(&e, "domEvent")?;
+            let ctrl_key = try_get_bool_from_prop(&dom_event, "ctrlKey").unwrap_or(false);
+            let alt_key = try_get_bool_from_prop(&dom_event, "altKey").unwrap_or(false);
+            let meta_key = try_get_bool_from_prop(&dom_event, "metaKey").unwrap_or(false);
+            
             let key_code = try_get_u64_from_prop(&dom_event, "keyCode")?;
             let key = try_get_string(&dom_event, "key")?;
-            log_trace!("key_code: {}, key:{}", key_code, key);
-            //term_.write(key);
-            this.sink(key, term_key, e)?;
+            log_trace!("key_code: {}, key:{}, ctl_key:{}", key_code, key, ctrl_key);
+            this.sink(SinkEvent::new(key, term_key, ctrl_key, alt_key, meta_key), e)?;
             
             Ok(())
         });
 
         self_arc.term.on_key(listener.into_js());
         let self_arc_clone = self_arc.clone();
-        //let mut locked = self_arc.lock().expect("Unable to lock term");
         
         let mut locked_listener =  self_arc.listener.lock().expect("Unable to lock terminal listener");
         *locked_listener = Some(listener);
 
-        self_arc_clone.prompt();
-
-        //let args = Array::new_with_length(1);
-        //args.set(0, JsValue::from(options));
-        
-        /*
-        let term = js_sys::Reflect::construct(&terminal_js.into(), &args)?;
-        log_trace!("term: {:?}", term);
-
-        utils::apply_with_args1(&term, "open", JsValue::from(&self.element))?;
-        */
-
-        /*
-        let term = new Terminal({
-			allowTransparency: true,
-			fontFamily: this['font-family'] || 'Consolas, Ubuntu Mono, courier-new, courier, monospace',
-			fontSize: this['font-size'] || 20,
-			cursorBlink : true,
-			theme: {
-				background: this.background || 'rgba(0,0,0,0.0)',
-				foreground: this.foreground || '#000000',
-				cursor: this.cursor || this.foreground || "#FFF"
-			}
-		});
-        */
-    	//this.term = term;
-
         Ok(self_arc_clone)
     }
 
-    fn sink(self: &Arc<Self>, key_str:String, term_key:String, _e:JsValue)->Result<()>{
-        let mut data = self.data.lock().expect("Unable to lock terminal listener");
-        //buffer.push(key.clone());
-        //let term = self.term.as_ref().ok_or("term not found")?;
-        
-        // let mut handle_key = |key:String, term_key:String|{
-        //     let mut inject = |term_key:String|{
-        //         let mut vec = data.buffer.clone();
-        //         log_trace!("inject: vec: {}", vec.join(""));
-        //         let _removed:Vec<String> = vec.splice(data.cursor..(data.cursor+0), [term_key]).collect();
-        //         data.buffer = vec;
-        //         //log_trace!("inject: data.buffer: {:#?}", data.buffer);
-        //         //log_trace!("inject: removed: {:#?}", removed);
-        //         self.trail(data.cursor, &data.buffer, (true, false, 1));
-        //         data.cursor = data.cursor+1;
-        //     };
-        // };
+    fn sink(self: &Arc<Self>, e:SinkEvent, _e:JsValue)->Result<()>{
 
         let key = 
 
-        match key_str.as_str(){
+        match e.key.as_str(){
             "Backspace" => Key::Backspace,
             "ArrowUp"=> Key::ArrowUp,
             "ArrowDown"=> Key::ArrowDown,
             "ArrowLeft"=> Key::ArrowLeft,
             "ArrowRight"=>Key::ArrowRight,
+            "Escape"=>Key::Esc,
+            "Delete"=>Key::Delete,
+            "Tab"=>{
+                //TODO
+                return Ok(());
+            }
             // "Inject"=>{
             //     inject(term_key);
             // }
             "Enter" => Key::Enter,
             _=>{
-                // let printable = true;
-                // if printable {
-                    // inject(term_key);
-                    // ^ TODO - interpret character into Key::Char()
+                let printable = !e.meta_key; // ! (e.ctrl_key || e.alt_key || e.meta_key);
+                if !printable{
                     return Ok(());
-                // }
+                }
+                //log_trace!("Char: {}", e.key);
+                if let Some(c) = e.key.chars().next(){
+                    //log_trace!("Char2: {}, {}", e.key, c);
+                    //log_trace!("e:{:?}", e);
+                    if e.ctrl_key{
+                        Key::Ctrl(c)
+                    }else{
+                        if e.alt_key{
+                            Key::Alt(c)
+                        }else{
+                            Key::Char(c)
+                        }
+                    }
+                }else{
+                    return Ok(());
+                }
             }
         };
 
-        // handle_key(key, term_key);
-        
-        //term.write(&key);
-
-
+        let mut locked = self.cli.lock().expect("Unable to lock terminal.cli for intake");
+        log_trace!("e3:{:?}", e);
+        if let Some(cli) = locked.as_mut(){
+            log_trace!("cli.intake: {:?}, {}", key, e.term_key);
+            cli.intake(key, e.term_key)?;
+        }
 
         Ok(())
     }
+  
+}
 
-    fn digest(self:&Arc<Self>, cmd:String){
-        log_trace!("digest cmd: {cmd}");
+unsafe impl Send for Terminal{}
+unsafe impl Sync for Terminal{}
+
+impl TerminalTrait for Terminal{
+    fn write(&self, s: String) -> Result<()> {
+        self.term.write(s);
+        Ok(())
     }
 
-    fn prompt_str(&self) -> String{
-		format!("{} ", self.prompt_prefix)
-	}
+    fn input_handler(&self, cli:Cli)-> Result<()> {
+        let mut locked = self.cli.lock().expect("Unable to lock terminal.cli");
+        *locked = Some(cli);
+        Ok(())
+    }
 
-    fn _prompt(&self, data:&mut Data){
-		data.cursor = 0;
-		data.buffer = Vec::new();
-
-		self.term.write(format!("\r\n{}", self.prompt_str()));
-		//self.promptLength = ("\r\n"+prompt).length;
-	}
-
-    pub fn prompt(&self){
-        let mut data = self.data.lock().expect("Unable to lock terminal listener");
-		self._prompt(&mut data);
-	}
-
-    pub fn write_vec(&self, mut str_list:Vec<String>) {
-        let data = self.data.lock().expect("Unable to lock terminal listener");
-		
-        str_list.push("\r\n".to_string());
-        
-		if data.running {
-			self.term.write(str_list.join(""));
-		}else {
-			self.term.write(format!("\x1B[2K\r{}", str_list.join("")));
-			let prompt = format!("{}{}", self.prompt_str(), data.buffer.join(""));
-			self.term.write(prompt);
-			let l = data.buffer.len() - data.cursor;
-			for _ in 0..l{
-				self.term.write("\x08");
-            }
-		}
-	}
-	pub fn write_str<T:Into<String>>(&self, str:T){
-        let s:String = str.into();
-		self.write_vec(Vec::from([s]));
-	}
-
-    
-    // fn trail(self: &Arc<Self>, x:usize, buffer:&Vec<String>, options:(bool, bool, usize)) {
-	// 	let (rewind, erase_last, offset) = options;
-	// 	let mut tail = buffer[x..].join("");
-    //     if erase_last{
-    //         tail = tail+" ";
-    //     }
-	// 	self.term.write(&tail);
-    //     if rewind{
-    //         let mut l = tail.len();
-    //         if offset > 0{
-    //             l = l-offset;
-    //         }
-    //         for _ in 0..l{
-    //             self.term.write("\x08");//backspace
-    //         }
-    //     }
-	// }
+    fn start(&self)-> Result<()> {
+        //self._start()?;
+        Ok(())
+    }
 }
