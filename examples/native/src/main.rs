@@ -82,7 +82,7 @@ impl CliHandler for TestCli {
             vec![]
         }
     }
-
+}
 
 fn main() ->Result<()>{
 
