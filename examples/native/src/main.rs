@@ -8,12 +8,97 @@ use std::io::{Write, stdout, stdin};
 */
 
 use workflow_terminal::{Cli, Result, Terminal};
+use workflow_log::*;
 use std::sync::{Arc,Mutex};
 
+// ^=================================================================
+#[async_trait]
+trait CliHandler {
+    async fn digest(&self, cmd: String) -> Result<()>;
+    async fn complete(&self, substring : String) -> Result<Vec<String>>;
+}
+// ^=================================================================
+
+#[derive(Clone)]
+pub struct LogSink;
+
+impl workflow_log::Sink for LogSink {
+    fn write(&self, _level:Level, args : &std::fmt::Arguments<'_>) -> bool {
+        if let Some(logs) = self.logs.lock().unwrap().as_mut() {
+            logs.push(args.to_string());
+        }
+        false
+    }
+}    
+
+
+
+struct TestCli {
+    term : Arc<dyn Terminal>
+}
+
+impl TestCli {
+    pub fn new(term : &Arc<dyn Terminal>) -> TestCli {
+        TestCli {
+            term : term.clone()
+        }
+    }
+}
+
+// optional: for binding to logs only!
+impl workflow_log::Sink for TestCli {
+    fn write(&self, _level:Level, args : &std::fmt::Arguments<'_>) -> bool {
+        
+        self.term.write(args.to_string());
+        // return: 
+        // - false for default log output handling (print to stdout or web console)
+        // - true, to disable further processing (no further output is made)
+        true
+    }
+}
+
+#[async_trait]
+impl CliHandler for TestCli {
+    async fn digest(&self, cmd: String) -> Result<()> {
+
+        let argv = cmd.split(' ').collect::<Vec<&str>>();
+
+        match argv[0] {
+            "hello" => {
+                log_trace!("hello back to you!");
+            },
+            _ => {
+                return Err("Unknown command")
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn complete(&self, substring : String) -> Result<Vec<String>> {
+        if substring.starts_with('a') {
+            vec!["alpha", "aloha", "albatross"]
+        } else {
+            vec![]
+        }
+    }
+
+
 fn main() ->Result<()>{
+
+    //^
+    //^ TODO perhaps (to simplify) we don't want to create Terminal here
+    //^ we want to make Cli create the term automatically
+    //^ but pass target Element in TerminalOptions passed to Cli
+    //^ i.e. more like:  
+    //^     let cli = Cli::new(Options { target_element : Some(el), prompt });
+    //^
+
     let term = Arc::new(Terminal::new()?);
     let prompt = Arc::new(Mutex::new("$ ".to_string()));
-    let cli = Cli::new(term, prompt)?;
+    let cli = Cli::new(term.clone(), prompt)?;
+
+    let handler = TestCli::new(&term);
 
     cli.start();
 
