@@ -12,7 +12,7 @@ pub mod cursor;
 
 //use js_sys::Promise;
 pub use result::Result;
-pub use cli::{Cli, CliHandler};
+pub use cli::CliHandler;
 use std::sync::Arc;
 use std::future::Future;
 //use std::time;

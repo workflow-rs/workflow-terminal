@@ -2,7 +2,7 @@ use web_sys::Element;
 use workflow_dom::utils::*;
 use workflow_log::*;
 use crate::Result;
-use crate::cli::{Cli, Terminal as TerminalTrait, CliHandler, DefaultHandler};
+use crate::cli::{Intake, Terminal as TerminalTrait, CliHandler, DefaultHandler};
 use crate::keys::Key;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -10,7 +10,7 @@ use std::fmt::Debug;
 use std::fmt::Formatter;
 use std::sync::{Mutex, Arc};
 use workflow_wasm::listener::Listener;
-use workflow_wasm::utils::*;
+use workflow_wasm::utils::{*, self};
 
 /// #[wasm_bindgen(module = "/defined-in-js.js")]
 #[wasm_bindgen()]
@@ -78,7 +78,7 @@ pub struct Terminal{
     pub element: Element,
     term:Term,
     listener: Arc<Mutex<Option<Listener<JsValue>>>>,
-    cli: Arc<Mutex<Option<Cli>>>,
+    intake: Arc<Intake>,
     handler: Arc<Mutex<Arc<dyn CliHandler>>>,
     //cli: Option<Cli>
 }
@@ -92,15 +92,11 @@ impl Terminal{
             element,
             listener: Arc::new(Mutex::new(None)),
             term: Self::create_term()?,
-            cli: Arc::new(Mutex::new(None)),
+            intake: Arc::new(Intake::new(Arc::new(Mutex::new(opt.prompt)))?),
             handler: Arc::new(Mutex::new(Arc::new(DefaultHandler::new()))),
             //cli: None
         };
         let term = terminal.init()?;
-        let t = term.clone();
-        let mut locked = t.cli.lock().expect("Unable to lock cli for init");
-        *locked = Some(Cli::new(term.clone(), Arc::new(Mutex::new(opt.prompt)))?);
-
         Ok(term)
     }
 
@@ -212,13 +208,14 @@ impl Terminal{
         };
 
         
-        let mut locked = self.cli.lock().expect("Unable to lock terminal.cli for intake");
-        //log_trace!("e3:{:?}", e);
-        if let Some(cli) = locked.as_mut(){
-            //log_trace!("cli.intake: {:?}, {}", key, e.term_key);
-            cli.intake(key, e.term_key)?;
-        }
+        let res = self.intake.process_key(key, e.term_key)?;
         
+        for text in res.texts{
+            self.term.write(text);
+        }
+        if let Some(cmd) = res.cmd{
+            self.digest(cmd)?;
+        }
 
         /*
         if let Some(cli) = self.cli.as_ref(){
@@ -236,12 +233,43 @@ impl Terminal{
     }
 
     pub fn prompt(&self)->Result<()>{
-        let locked = self.cli.lock().expect("Unable to lock cli for prompt");
-        if let Some(cli) = locked.as_ref(){
-            cli.prompt()?;
-        }
+        self.term.write(self.intake.prompt()?);
         Ok(())
     }
+
+
+    fn write_vec(&self, mut str_list:Vec<String>) ->Result<()> {
+        let data = self.intake.inner()?;
+		
+        str_list.push("\r\n".to_string());
+        
+		if self.intake.is_running() {
+			self.term.write(str_list.join(""));
+		}else {
+			self.term.write(format!("\x1B[2K\r{}", str_list.join("")));
+			let prompt = format!("{}{}", self.intake.prompt_str(), data.buffer.join(""));
+			self.term.write(prompt);
+			let l = data.buffer.len() - data.cursor;
+			for _ in 0..l{
+				self.term.write("\x08".to_string());
+            }
+		}
+
+        Ok(())
+	}
+
+    fn _write<S>(&self, s : S)->Result<()> where S : Into<String> {
+        self.term.write(s.into());
+        Ok(())
+    }
+
+	/*
+    fn write<S>(&self, s : S)-> Result<()>  where S : Into<String> {
+        let s:String = s.into();
+		self.write_vec(Vec::from([s]))?;
+        Ok(())
+	}
+    */
 
   
 }
@@ -251,7 +279,8 @@ unsafe impl Sync for Terminal{}
 
 impl TerminalTrait for Terminal{
     fn write(&self, s: String) -> Result<()>{
-        self.term.write(s);
+        //self.term.write(s);
+        self.write_vec(Vec::from([s]))?;
         Ok(())
     }
 
@@ -262,13 +291,18 @@ impl TerminalTrait for Terminal{
 
     fn digest(&self, cmd: String) -> Result<()>{
         let hander = self.handler.clone();
-        let cli = self.cli.clone();
+        let intake = self.intake.clone();
+        let term = self.term.clone();
         crate::spawn(async move{
             let locked = hander.lock().expect("Unable to lock terminal.handler for digest");
             let _r = locked.digest(cmd).await;
-            let mut locked_cli = cli.lock().expect("Unable to lock terminal.cli for digest");
-            if let Some(cli) = locked_cli.as_mut(){
-                let _r = cli.after_digest();
+            match intake.after_digest(){
+                Ok(text)=>{
+                    let _r = utils::apply_with_args1(&term, "write", JsValue::from(text));
+                }
+                Err(_e)=>{
+                    //
+                }
             }
         });
         Ok(())

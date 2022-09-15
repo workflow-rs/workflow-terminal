@@ -6,15 +6,14 @@ use termion::raw::IntoRawMode;
 use termion::raw::RawTerminal;
 use std::io::{Write, Stdout, Stdin, stdout, stdin};
 //use workflow_log::*;
-use crate::cli::{DefaultHandler, CliHandler, Terminal as TerminalTrait};
-use crate::Cli;
+use crate::cli::{Intake, DefaultHandler, CliHandler, Terminal as TerminalTrait};
 use crate::keys::Key;
 use crate::Result;
 use std::sync::{Arc,Mutex};
 
 
 pub struct Terminal {
-    cli: Arc<Mutex<Option<Cli>>>,
+    intake: Arc<Intake>,
     handler: Arc<Mutex<Arc<dyn CliHandler>>>,
     //stdout:RawTerminal<Stdout>,
     //stdin:Stdin
@@ -29,36 +28,13 @@ impl Terminal {
         //let stdout = stdout().into_raw_mode().unwrap();
         //let stdin = stdin();
         let terminal = Terminal {
-            cli: Arc::new(Mutex::new(None)),
+            intake: Arc::new(Intake::new(Arc::new(Mutex::new(opt.prompt)))?),
             handler: Arc::new(Mutex::new(Arc::new(DefaultHandler::new()))),
             //stdout,
             //stdin
         };
-
         let term = terminal.init()?;
-        {
-            let t = term.clone();
-            let mut locked = t.cli.lock().expect("Unable to lock cli for init");
-            *locked = Some(Cli::new(term.clone(), Arc::new(Mutex::new(opt.prompt)))?);
-        }
         Ok(term)
-    }
-
-    fn _write<S>(&self, s:S)->Result<()> where S:Into<String>{
-        println!("{}", s.into());
-        //print!("{}", s.into());
-        //let mut stdout = stdout().into_raw_mode().unwrap();
-        /*write!(stdout,
-            //"{}{}{}{}",
-            "{}{}",
-            //termion::clear::All,
-            termion::cursor::Goto(1, 1),
-            s.into(),
-            //termion::cursor::Hide
-            )
-            .unwrap();*/
-        //stdout.flush().unwrap();
-        Ok(())
     }
 
     pub fn init(self)->Result<Arc<Self>> {
@@ -138,13 +114,14 @@ impl Terminal {
                 }
             };
 
-            //print!("A");
-            let mut locked = self.cli.lock().expect("Unable to lock terminal.cli for intake");
-            if let Some(cli) = locked.as_mut(){
-                //log_trace!("cli.intake");
-                cli.intake(key, "".to_string())?;
+            let res = self.intake.process_key(key, "".to_string())?;
+        
+            for text in res.texts{
+                self.term_write(text);
             }
-
+            if let Some(cmd) = res.cmd{
+                self.digest(cmd)?;
+            }
 
             //self.stdout.flush().unwrap();
         }
@@ -152,16 +129,49 @@ impl Terminal {
         Ok(())
     }
 
+    fn write_vec(&self, mut str_list:Vec<String>) ->Result<()> {
+        let data = self.intake.inner()?;
+		
+        str_list.push("\r\n".to_string());
+        
+		if self.intake.is_running(){
+			self.term_write(str_list.join(""));
+		}else {
+			self.term_write(format!("\x1B[2K\r{}", str_list.join("")));
+			let prompt = format!("{}{}", self.intake.prompt_str(), data.buffer.join(""));
+			self.term_write(prompt);
+			let l = data.buffer.len() - data.cursor;
+			for _ in 0..l{
+				self.term_write("\x08".to_string());
+            }
+		}
+
+        Ok(())
+	}
+
+    fn term_write<S>(&self, s:S) where S:Into<String>{
+        println!("{}", s.into());
+        //print!("{}", s.into());
+        //let mut stdout = stdout().into_raw_mode().unwrap();
+        /*write!(stdout,
+            //"{}{}{}{}",
+            "{}{}",
+            //termion::clear::All,
+            termion::cursor::Goto(1, 1),
+            s.into(),
+            //termion::cursor::Hide
+            )
+            .unwrap();*/
+        //stdout.flush().unwrap();
+    }
+
     pub fn write_str<S>(&self, text:S)->Result<()> where S:Into<String>{
-        self._write(text.into())?;
+        self.term_write(text.into());
         Ok(())
     }
 
     pub fn prompt(&self)->Result<()>{
-        let locked = self.cli.lock().expect("Unable to lock cli for prompt");
-        if let Some(cli) = locked.as_ref(){
-            cli.prompt()?;
-        }
+        self.term_write(self.intake.prompt()?);
         Ok(())
     }
 }
@@ -172,7 +182,7 @@ impl Terminal {
 
 impl TerminalTrait for Terminal{
     fn write(&self, s: String) -> Result<()> {
-        self._write(s)?;
+        self.write_vec(Vec::from([s]))?;
         Ok(())
     }
 
@@ -181,26 +191,27 @@ impl TerminalTrait for Terminal{
         Ok(())
     }
     fn digest(&self, cmd: String) -> Result<()>{
-        println!("native-digest:cmd:{}", cmd);
+        //println!("native-digest:cmd:{}", cmd);
         let this = self.clone();
         //let handler = self.handler.clone();
         //let cli = self.cli.clone();
         async_std::task::block_on(async move{
-            println!("native-digest: AAA ");
+            //println!("native-digest: AAA ");
             {
                 let locked = this.handler.lock().expect("Unable to lock terminal.handler for digest");
                 let _r = locked.digest(cmd).await;
             }
-            println!("native-digest: BBB ");
-            let mut locked_cli = this.cli.lock().expect("Unable to lock terminal.cli for digest");
-            {
-                println!("native-digest: CCCC ");
-                if let Some(cli) = locked_cli.as_mut(){
-                    println!("native-digest: DDD ");
-                    let _r = cli.after_digest();
+            //println!("native-digest: BBB ");
+            match this.intake.after_digest(){
+                Ok(text)=>{
+                    let _r = this.term_write(text);
+                }
+                Err(_e)=>{
+                    //
                 }
             }
-            println!("native-digest: EEEE ");
+
+            //println!("native-digest: EEEE ");
         });
         Ok(())
     }

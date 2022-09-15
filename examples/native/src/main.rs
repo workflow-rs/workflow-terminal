@@ -61,9 +61,9 @@ impl workflow_log::Sink for TestCli {
 #[async_trait]
 impl CliHandler for TestCli {
     async fn digest(&self, cmd: String) -> Result<()> {
-        println!("cmd:: {}", cmd);
+        //println!("cmd:: {}", cmd);
         let argv = cmd.split(' ').collect::<Vec<&str>>();
-        println!("argv[0]:: {}", argv[0]);
+        //println!("argv[0]:: {}", argv[0]);
         match argv[0] {
             "hello" => {
                 self.term.write_str("hello back to you!")?;
