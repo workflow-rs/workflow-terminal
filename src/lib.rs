@@ -10,17 +10,18 @@ pub mod cli;
 pub mod keys;
 pub mod cursor;
 
+//use js_sys::Promise;
 pub use result::Result;
-pub use cli::{Cli, Handler, HandleResult};
-use std::sync::{Arc, Mutex};
+pub use cli::{Cli, CliHandler};
+use std::sync::Arc;
 use std::future::Future;
-use std::pin::Pin;
-use std::{thread, time};
+//use std::time;
+//use async_std::task::sleep;
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         mod xterm;
-        pub use xterm::Terminal;
+        pub use xterm::{Terminal, Options};
         use workflow_dom::utils::body;
         use wasm_bindgen::prelude::*;
         use workflow_log::*;
@@ -30,7 +31,12 @@ cfg_if! {
             spawn_local(future)
         }
 
-        #[wasm_bindgen(start)]
+        pub fn get_terminal() -> Result<Arc<Terminal>> {
+            let term = unsafe { (&TERMINAL).as_ref().unwrap().clone() };
+            Ok(term.clone())
+        }
+
+        //#[wasm_bindgen(start)]
         pub fn load_scripts() ->Result<()>{
             loader::load_scripts_impl(Closure::<dyn FnMut(web_sys::CustomEvent)->std::result::Result<(), JsValue>>::new(move|_|->std::result::Result<(), JsValue>{
                 log_trace!("init_terminal...");
@@ -41,20 +47,32 @@ cfg_if! {
         }
         
         static mut TERMINAL : Option<Arc<Terminal>> = None;
+        static mut INIT_FN : Option<Box<dyn Fn()->Result<()>>> = None;
+    
         pub fn init_terminal()->Result<()>{
             let body_el = body()?;
-            let terminal = Terminal::new(&body_el)?;
+            let terminal = Terminal::new(&body_el, Options{
+                prompt:"$ ".to_string()
+            })?;
             unsafe { TERMINAL = Some(terminal); }
+
+            if let Some(init_fn) = unsafe { (&INIT_FN).as_ref() }{
+                init_fn()?;
+            }
+
             Ok(())
         }
 
+        pub fn on_terminal_ready(f: Box<dyn Fn()->Result<()>>){
+            unsafe { INIT_FN = Some(f); }
+        }
+        
+
+
     } else {
         mod native;
+        pub use native::Options;
         pub use native::Terminal;
-
-        pub fn spawn<F>(future: F) where F: Future<Output = ()> + 'static{
-            //spawn_local(future)
-        }
 
         // ^ TODO load terminal
         
@@ -62,52 +80,6 @@ cfg_if! {
 }
 
 
-cfg_if! {
-    if #[cfg(all(target_arch = "wasm32"))] {
-        pub fn get_terminal() -> Result<Arc<Terminal>> {
-            let term = unsafe { (&TERMINAL).as_ref().unwrap().clone() };
-            Ok(term.clone())
-        }
-
-        struct CliHandler{
-            cli:Arc<Cli>
-        }
-
-        impl CliHandler{
-            fn new(cli:Arc<Cli>)->Self{
-                Self{cli}
-            }
-        }
-
-        impl Handler for CliHandler{
-            fn handle(self: Arc<Self>, cmd:String)->HandleResult {
-                let this = self.clone();
-                Box::pin(async move{
-                    log_trace!("cmd:{}", cmd);
-                    //let five_sec = time::Duration::from_millis(5000);
-                    //thread::sleep(five_sec);
-                    this.cli.write("Hi from handler")?;
-                    log_trace!("sleep - timeout");
-                    Ok(())
-                })
-            }
-        }
-
-        static mut CLI : Option<Arc<Cli>> = None;
-        #[wasm_bindgen(js_name="testCli")]
-        pub fn test_cli()->Result<()>{
-            let term = get_terminal()?;
-            let prompt = Arc::new(Mutex::new("$ ".to_string()));
-            let cli = Arc::new(Cli::new(term, prompt)?);
-            cli.prompt()?;
-            cli.write("TESTING CLI...")?;
-            cli.set_handler(Arc::new(CliHandler::new(cli.clone())))?;
-
-            unsafe { CLI = Some(cli); }
-            Ok(())
-        }
-    }
-}
 
 // pub mod listener;
 // pub mod utils;

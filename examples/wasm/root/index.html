@@ -1,0 +1,48 @@
+<html>
+    <head>
+        <script type="module">
+            window._test_abc_ = ()=>{
+                return new Promise(resolve=>{
+                    setTimeout(()=>resolve(true), 3)
+                })
+            }
+            window._XYZ = class{
+                constructor(){
+                    console.log("_XYZ constructor")
+                }
+                fetch(){
+                    return new Promise(resolve=>{
+                        setTimeout(()=>resolve(true), 300)
+                    })
+                }
+            }
+            import * as workflow from '/workflow-terminal/workflow-terminal.js';
+            (async () => {
+                const wasm = await workflow.default('/workflow-terminal/workflow-terminal_bg.wasm');
+                //window.terminal_wasm = wasm;
+                //setTimeout(()=>{
+                    //console.log("wasm.testCli....");
+                    //wasm.testCli();
+                //}, 1000)
+            })();
+
+            
+
+            function exec_async_blockinig(promise) {
+                console.log("AAAA");
+                (async ()=>{
+                    let r = await promise;
+                    console.log("promise resolved", r);
+                })();
+                console.log("BBB");
+            }
+
+            exec_async_blockinig(new Promise((resolve, reject)=>{
+                setTimeout(()=>{
+                    resolve("sss")
+                }, 1000);
+            }))
+        </script>
+    </head>
+    <body></body>
+</html>

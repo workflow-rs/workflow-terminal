@@ -1,22 +1,12 @@
-
-
-
-// pub trait Intake {
-//     fn intake(key : Key);
-// }
-
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, MutexGuard, LockResult, atomic::AtomicBool};
-use workflow_log::*;
+//use workflow_log::*;
 use crate::result::Result;
 use crate::keys::Key;
 use crate::cursor::*;
-use crate::spawn;
-use std::future::Future;
-use std::pin::Pin;
-
-pub type HandleResult = Pin<Box<dyn Future<Output = Result<()>>>>;
-
+//use crate::spawn;
+use async_trait::async_trait;
+use workflow_log::log_trace;
 
 
 #[derive(Debug)]
@@ -38,54 +28,57 @@ impl Inner {
     }
 }
 
-/*
-pub struct TerminalEvent{
-    pub key:Key,
-    pub key_str:String
-}
-*/
 
-
-pub trait TerminalTrait : Sync + Send {
+pub trait Terminal : Sync + Send {
     fn write(&self, s: String) -> Result<()>;
-    fn input_handler(&self, h:Cli)-> Result<()>;
+    //fn write<S>(&self, s: S) -> Result<()> where S:Into<String>;
+    //fn input_handler(&self, h:Cli)-> Result<()>;
     fn start(&self)-> Result<()>;
-    //fn input_handler(&self, h:Box<dyn FnMut(TerminalEvent)-> Result<()>>)-> Result<()>;
+    fn digest(&self, cmd: String) -> Result<()>;
+    fn register_handler(&self, hander: Arc<dyn CliHandler>)-> Result<()>;
 }
 
-pub trait Handler{
-    //fn handle(&self, cmd:String)->Result<()>;
+#[async_trait]
+pub trait CliHandler : Sync + Send{
+    async fn digest(&self, cmd: String) -> Result<()>;
+    async fn complete(&self, substring : String) -> Result<Vec<String>>;
+}
+pub struct DefaultHandler{}
 
-    fn handle(self: Arc<Self>, cmd:String)->HandleResult;
+impl DefaultHandler{
+    pub fn new()->Self{
+        Self{}
+    }
 }
 
-struct DefaultHandler{
+#[async_trait]
+impl CliHandler for DefaultHandler{
+    async fn digest(&self, _cmd:String)->Result<()>{
+        Ok(())
+    }
 
-}
-
-impl Handler for DefaultHandler{
-    fn handle(self: Arc<Self>, _cmd:String)->HandleResult{
-        Box::pin(async move{
-            Ok(())
-        })
+    async fn complete(&self, substring : String) -> Result<Vec<String>> {
+        if substring.starts_with('a') {
+            Ok(vec!["alpha".to_string(), "aloha".to_string(), "albatross".to_string()])
+        } else {
+            Ok(vec![])
+        }
     }
 }
 
 
 #[derive(Clone)]
 pub struct Cli {
-    inner : Arc<Mutex<Inner>>,
+    pub inner : Arc<Mutex<Inner>>,
     running: Arc<AtomicBool>,
-    // term : Arc<Mutex<Arc<dyn Terminal>>>,
-    term : Arc<dyn TerminalTrait>,
+    term : Arc<dyn Terminal>,
     prompt : Arc<Mutex<String>>,
-    handler: Arc<Mutex<Arc<dyn Handler>>>,
 }
 
 impl Cli {
 
     pub fn new(
-        term : Arc<dyn TerminalTrait>,
+        term : Arc<dyn Terminal>,
         prompt : Arc<Mutex<String>>,
     ) -> Result<Cli> {
 
@@ -94,7 +87,6 @@ impl Cli {
             running : Arc::new(AtomicBool::new(false)),
             term,
             prompt,
-            handler: Arc::new(Mutex::new(Arc::new(DefaultHandler{}))),
         };
 
         cli.init()?;
@@ -102,24 +94,17 @@ impl Cli {
         Ok(cli)
     }
 
-    
-    pub fn set_handler(&self, h: Arc<dyn Handler>)->Result<()>{
-        let mut locked = self.handler.lock().expect("Unable to lock handler");
-        *locked = h;
-        Ok(())
-    }
-
     fn init(&self)->Result<()>{
-        let this = self.clone();
         /*
+        let this = self.clone();
+        / *
         self.term.input_handler(Box::new(move |e:TerminalEvent|->Result<()>{
             this.intake(e.key, e.key_str);
             Ok(())
         }))?;
-        */
+        * /
         self.term.input_handler(this)?;
-
-
+        */
         Ok(())
     }
 
@@ -191,6 +176,8 @@ impl Cli {
         data.cursor = 0;
 		data.buffer = Vec::new();
 
+        log_trace!("prompt...");
+
 		self.term.write(format!("\r\n{}", self.prompt_str()))?;
         Ok(())
 	}
@@ -211,8 +198,10 @@ impl Cli {
     }
 
     pub fn intake(&self, key : Key, _term_key : String) -> Result<()> {
+        let running = self.running.load(Ordering::SeqCst);
         match key {
             Key::Backspace => {
+                if running{ return Ok(()); }
                 let mut data = self.inner()?;
                 if data.cursor == 0{
                     return Ok(());
@@ -225,6 +214,7 @@ impl Cli {
                 self.trail(data.cursor, &data.buffer, true, true, 0)?;
             },
             Key::ArrowUp =>{
+                if running{ return Ok(()); }
                 let mut data = self.inner()?;
                 if data.history_index == 0{
                     return Ok(());
@@ -245,6 +235,7 @@ impl Cli {
                 
             }
             Key::ArrowDown =>{
+                if running{ return Ok(()); }
                 let mut data = self.inner()?;
                 let len =  data.history.len();
                 if data.history_index >= len{
@@ -263,6 +254,7 @@ impl Cli {
                 data.cursor = data.buffer.len();
             }
             Key::ArrowLeft =>{
+                if running{ return Ok(()); }
                 let mut data = self.inner()?;
                 if data.cursor == 0{
                     return Ok(());
@@ -271,6 +263,7 @@ impl Cli {
                 self._write(Left(1))?;
             }
             Key::ArrowRight =>{
+                if running{ return Ok(()); }
                 let mut data = self.inner()?;
                 if data.cursor < data.buffer.len() {
                     data.cursor = data.cursor+1;
@@ -281,6 +274,7 @@ impl Cli {
             //     inject(term_key);
             // }
             Key::Enter => {
+                if running{ return Ok(()); }
                 //log_trace!("Key::Enter:cli");
                 let cmd = {
                     let mut data = self.inner()?;
@@ -290,7 +284,7 @@ impl Cli {
                     let buffer = data.buffer.clone();
                     let length = data.history.len();
 
-                    //self._write("\r\n")?;
+                    
                     data.buffer = Vec::new();
                     data.cursor = 0;
 
@@ -319,19 +313,24 @@ impl Cli {
                 };
 
                 if let Some(cmd) = cmd {
+                    self._write("\r\n")?;
                     self.running.store(true, Ordering::SeqCst);
                     self.digest(cmd)?;
-                    self.running.store(false, Ordering::SeqCst);
+                    //#[cfg(not(target_arch="wasm32"))]
+                    //self.after_digest()?;
+                }else{
+                    self.prompt()?;
                 }
-                self.prompt()?;
             },
             Key::Alt(_c)=>{
+                if running{ return Ok(()); }
                 return Ok(());
             },
             Key::Ctrl(_c)=>{
                 return Ok(());
             },
             Key::Char(ch)=>{
+                if running{ return Ok(()); }
                 self.inject(ch.to_string())?;
             },
             _ => {
@@ -339,6 +338,12 @@ impl Cli {
             }
         }
 
+        Ok(())
+    }
+
+    pub fn after_digest(&self)-> Result<()> {
+        self.running.store(false, Ordering::SeqCst);
+        self.prompt()?;
         Ok(())
     }
 
@@ -360,13 +365,36 @@ impl Cli {
         Ok(())
 	}
 
+    /*
+    fn build_arg(&self, s:&str)->String{
+        let s = s.trim();
+        if (s.starts_with("\"") && s.ends_with("\"")) 
+            || (s.starts_with("'") && s.ends_with("'"))
+        {
+            return s.to_string();
+        }
+
+        s.replace("  ", " ")
+    }
+    */
+
     fn digest(&self, cmd: String) -> Result<()> {
+        /*
+        let mut args:Vec<String> = cmd.split(" ").map(|a|{
+            self.build_arg(a)
+        }).filter(|a|{a.len()>0}).collect();
+        let cmd = args.remove(0);
+        */
+        
+        /*
         let this = self.clone();
         spawn(async move {
             log_trace!("Digesting: {}", cmd);
             let locked = this.handler.lock().expect("Unable to unlock handler");
-            let _r = locked.clone().handle(cmd).await;
+            let _r = locked.clone().digest(cmd).await;
         });
+        */
+        self.term.digest(cmd)?;
         Ok(())
     }
 

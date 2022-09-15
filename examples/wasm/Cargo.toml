@@ -1,0 +1,15 @@
+[package]
+name = "workflow-terminal-test-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+workflow-terminal = {path = "../../"}
+workflow-log = { path = "../../../workflow-log" }
+async-trait = "0.1.57"
+wasm-bindgen-futures="*"
+js-sys = "0.3.56"
+wasm-bindgen = "0.2.79"

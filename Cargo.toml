@@ -6,14 +6,9 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "lib"]
 
-#[target.'cfg(not(target_arch = "wasm32"))'.lib]
-#crate-type = ["dylib"]
 
 [dependencies]
 cfg-if = "1.0.0"
-
-# [target.'cfg(target_arch = "wasm32")'.dependencies]
-# [dependencies]
 js-sys = "0.3.56"
 wasm-bindgen = "0.2.79"
 regex = "1.5.5"
@@ -23,9 +18,12 @@ workflow-dom = { path = "../workflow-dom" }
 thiserror = "1.0.32"
 numtoa = "0.2.4"
 wasm-bindgen-futures="*"
+async-std = { version = "1.12.0"}
+async-trait = "0.1.57"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 termion = "1.5.6"
+smol = "1.2.5"
 
 
 [dependencies.web-sys]

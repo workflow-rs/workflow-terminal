@@ -7,20 +7,19 @@ use termion::raw::IntoRawMode;
 use std::io::{Write, stdout, stdin};
 */
 
-use workflow_terminal::{Cli, Result, Terminal};
-use workflow_log::*;
-use std::sync::{Arc,Mutex};
+use workflow_terminal::{Result, cli::Terminal as TerminalTrait};
+use std::sync::Arc;
+use async_trait::async_trait;
+use workflow_terminal::Terminal;
+use workflow_terminal::CliHandler;
+use workflow_terminal::Options;
+//use workflow_log::*;
 
-// ^=================================================================
-#[async_trait]
-trait CliHandler {
-    async fn digest(&self, cmd: String) -> Result<()>;
-    async fn complete(&self, substring : String) -> Result<Vec<String>>;
-}
-// ^=================================================================
-
+/*
 #[derive(Clone)]
-pub struct LogSink;
+pub struct LogSink{
+    logs:Arc<Mutex<Vec<String>>>
+}
 
 impl workflow_log::Sink for LogSink {
     fn write(&self, _level:Level, args : &std::fmt::Arguments<'_>) -> bool {
@@ -29,46 +28,48 @@ impl workflow_log::Sink for LogSink {
         }
         false
     }
-}    
+}
+*/  
 
 
 
 struct TestCli {
-    term : Arc<dyn Terminal>
+    term : Arc<Terminal>
 }
 
 impl TestCli {
-    pub fn new(term : &Arc<dyn Terminal>) -> TestCli {
-        TestCli {
-            term : term.clone()
-        }
+    fn new(term:Arc<Terminal>)->Result<Arc<Self>>{
+        let handler = Arc::new(Self{term});
+        handler.term.register_handler(handler.clone())?;
+        Ok(handler)
     }
 }
-
+/*
 // optional: for binding to logs only!
 impl workflow_log::Sink for TestCli {
     fn write(&self, _level:Level, args : &std::fmt::Arguments<'_>) -> bool {
         
-        self.term.write(args.to_string());
+        self.term.write(args.to_string())?;
         // return: 
         // - false for default log output handling (print to stdout or web console)
         // - true, to disable further processing (no further output is made)
         true
     }
 }
+*/
 
 #[async_trait]
 impl CliHandler for TestCli {
     async fn digest(&self, cmd: String) -> Result<()> {
-
+        println!("cmd:: {}", cmd);
         let argv = cmd.split(' ').collect::<Vec<&str>>();
-
+        println!("argv[0]:: {}", argv[0]);
         match argv[0] {
             "hello" => {
-                log_trace!("hello back to you!");
+                self.term.write_str("hello back to you!")?;
             },
             _ => {
-                return Err("Unknown command")
+                return Err("Unknown command".into())
             }
         }
 
@@ -77,9 +78,9 @@ impl CliHandler for TestCli {
 
     async fn complete(&self, substring : String) -> Result<Vec<String>> {
         if substring.starts_with('a') {
-            vec!["alpha", "aloha", "albatross"]
+            Ok(vec!["alpha".to_string(), "aloha".to_string(), "albatross".to_string()])
         } else {
-            vec![]
+            Ok(vec![])
         }
     }
 }
@@ -94,60 +95,23 @@ fn main() ->Result<()>{
     //^     let cli = Cli::new(Options { target_element : Some(el), prompt });
     //^
 
+    /*
     let term = Arc::new(Terminal::new()?);
     let prompt = Arc::new(Mutex::new("$ ".to_string()));
     let cli = Cli::new(term.clone(), prompt)?;
-
-    let handler = TestCli::new(&term);
-
-    cli.start();
-
-    /*
-    let stdin = stdin();
-    let mut stdout = stdout().into_raw_mode().unwrap();
-
-    write!(stdout,
-           "{}{}q to exit. Type stuff, use alt, and so on.{}",
-           termion::clear::All,
-           termion::cursor::Goto(1, 1),
-           termion::cursor::Hide)
-            .unwrap();
-    stdout.flush().unwrap();
-
-    for c in stdin.keys() {
-        
-        write!(stdout,
-               "{}{}",
-               termion::cursor::Goto(1, 1),
-               termion::clear::CurrentLine)
-                .unwrap();
-        
-
-        match c.unwrap() {
-            Key::Char('q') => break,
-            Key::Char(c) => {
-                if c == '\n' || c == '\r'{
-                    print!("enter: {}", c);
-                }else{
-                    print!("{}", c);
-                }
-            },
-            Key::Alt(c) => print!("^{}", c),
-            Key::Ctrl(c) => print!("*{}", c),
-            Key::Esc => print!("ESC"),
-            Key::Left => print!("←"),
-            Key::Right => print!("→"),
-            Key::Up => print!("↑"),
-            Key::Down => print!("↓"),
-            Key::Backspace => print!("×"),
-            //Key::Insert => println!("\r\n"),
-            _ => {}
-        }
-        stdout.flush().unwrap();
-    }
-
-    write!(stdout, "{}", termion::cursor::Show).unwrap();
     */
+
+    let term = Terminal::new(Options{
+        prompt:"$ ".to_string()
+    })?;
+    let handler = TestCli::new(term)?;
+
+    handler.term.write_str("Example of Native Terminal:")?;
+    handler.term.prompt()?;
+    handler.term.start()?;
+    
+
+
 
     Ok(())
 }

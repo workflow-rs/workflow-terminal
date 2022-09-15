@@ -18,6 +18,11 @@ impl From<String> for Error{
         Self::Str(v)
     }
 }
+impl From<&str> for Error{
+    fn from(v:&str)->Self{
+        Self::Str(v.to_string())
+    }
+}
 
 impl From<JsValue> for Error{
     fn from(v:JsValue)->Self{

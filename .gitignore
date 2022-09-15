@@ -4,3 +4,4 @@
 /root/workflow-terminal
 analyzer-target
 examples/native/Cargo.lock
+.DS_Store

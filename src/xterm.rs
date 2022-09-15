@@ -2,7 +2,7 @@ use web_sys::Element;
 use workflow_dom::utils::*;
 use workflow_log::*;
 use crate::Result;
-use crate::cli::{Cli, TerminalTrait};
+use crate::cli::{Cli, Terminal as TerminalTrait, CliHandler, DefaultHandler};
 use crate::keys::Key;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -48,13 +48,6 @@ impl Term{
     }
 }
 
-pub struct Terminal{
-    pub element: Element,
-    term:Term,
-    listener: Arc<Mutex<Option<Listener<JsValue>>>>,
-    cli: Arc<Mutex<Option<Cli>>>
-}
-
 #[derive(Debug)]
 pub struct SinkEvent{
     key:String,
@@ -72,18 +65,26 @@ impl SinkEvent{
         alt_key:bool,
         meta_key:bool,
     )->Self{
-        Self{
-            key,
-            term_key,
-            ctrl_key,
-            alt_key,
-            meta_key, 
-        }
+        Self{key, term_key, ctrl_key, alt_key, meta_key}
     }
 }
 
+
+pub struct Options{
+    pub prompt:String
+}
+
+pub struct Terminal{
+    pub element: Element,
+    term:Term,
+    listener: Arc<Mutex<Option<Listener<JsValue>>>>,
+    cli: Arc<Mutex<Option<Cli>>>,
+    handler: Arc<Mutex<Arc<dyn CliHandler>>>,
+    //cli: Option<Cli>
+}
+
 impl Terminal{
-    pub fn new(parent:&Element)->Result<Arc<Terminal>>{
+    pub fn new(parent:&Element, opt:Options)->Result<Arc<Terminal>>{
         let element = document().create_element("div")?;
         element.set_attribute("class", "terminal")?;
         parent.append_child(&element)?;
@@ -91,9 +92,15 @@ impl Terminal{
             element,
             listener: Arc::new(Mutex::new(None)),
             term: Self::create_term()?,
-            cli: Arc::new(Mutex::new(None))
+            cli: Arc::new(Mutex::new(None)),
+            handler: Arc::new(Mutex::new(Arc::new(DefaultHandler::new()))),
+            //cli: None
         };
         let term = terminal.init()?;
+        let t = term.clone();
+        let mut locked = t.cli.lock().expect("Unable to lock cli for init");
+        *locked = Some(Cli::new(term.clone(), Arc::new(Mutex::new(opt.prompt)))?);
+
         Ok(term)
     }
 
@@ -145,11 +152,12 @@ impl Terminal{
             let key_code = try_get_u64_from_prop(&dom_event, "keyCode")?;
             let key = try_get_string(&dom_event, "key")?;
             log_trace!("key_code: {}, key:{}, ctl_key:{}", key_code, key, ctrl_key);
+            //let locked = this.lock().expect("msg");
             this.sink(SinkEvent::new(key, term_key, ctrl_key, alt_key, meta_key), e)?;
             
             Ok(())
         });
-
+        //let locked = self_arc.lock().expect("Unable to lock terminal");
         self_arc.term.on_key(listener.into_js());
         let self_arc_clone = self_arc.clone();
         
@@ -159,7 +167,7 @@ impl Terminal{
         Ok(self_arc_clone)
     }
 
-    fn sink(self: &Arc<Self>, e:SinkEvent, _e:JsValue)->Result<()>{
+    fn sink(&self, e:SinkEvent, _e:JsValue)->Result<()>{
 
         let key = 
 
@@ -203,15 +211,38 @@ impl Terminal{
             }
         };
 
+        
         let mut locked = self.cli.lock().expect("Unable to lock terminal.cli for intake");
-        log_trace!("e3:{:?}", e);
+        //log_trace!("e3:{:?}", e);
         if let Some(cli) = locked.as_mut(){
-            log_trace!("cli.intake: {:?}, {}", key, e.term_key);
+            //log_trace!("cli.intake: {:?}, {}", key, e.term_key);
             cli.intake(key, e.term_key)?;
         }
+        
+
+        /*
+        if let Some(cli) = self.cli.as_ref(){
+            cli.intake(key, e.term_key)?;
+        }
+        */
+
 
         Ok(())
     }
+
+    pub fn write_str<S>(&self, text:S)->Result<()> where S:Into<String>{
+        self.term.write(text.into());
+        Ok(())
+    }
+
+    pub fn prompt(&self)->Result<()>{
+        let locked = self.cli.lock().expect("Unable to lock cli for prompt");
+        if let Some(cli) = locked.as_ref(){
+            cli.prompt()?;
+        }
+        Ok(())
+    }
+
   
 }
 
@@ -219,19 +250,33 @@ unsafe impl Send for Terminal{}
 unsafe impl Sync for Terminal{}
 
 impl TerminalTrait for Terminal{
-    fn write(&self, s: String) -> Result<()> {
+    fn write(&self, s: String) -> Result<()>{
         self.term.write(s);
-        Ok(())
-    }
-
-    fn input_handler(&self, cli:Cli)-> Result<()> {
-        let mut locked = self.cli.lock().expect("Unable to lock terminal.cli");
-        *locked = Some(cli);
         Ok(())
     }
 
     fn start(&self)-> Result<()> {
         //self._start()?;
+        Ok(())
+    }
+
+    fn digest(&self, cmd: String) -> Result<()>{
+        let hander = self.handler.clone();
+        let cli = self.cli.clone();
+        crate::spawn(async move{
+            let locked = hander.lock().expect("Unable to lock terminal.handler for digest");
+            let _r = locked.digest(cmd).await;
+            let mut locked_cli = cli.lock().expect("Unable to lock terminal.cli for digest");
+            if let Some(cli) = locked_cli.as_mut(){
+                let _r = cli.after_digest();
+            }
+        });
+        Ok(())
+    }
+
+    fn register_handler(&self, hander: Arc<dyn CliHandler>)-> Result<()> {
+        let mut locked = self.handler.lock().expect("Unable to lock terminal.handler");
+        *locked = hander;
         Ok(())
     }
 }

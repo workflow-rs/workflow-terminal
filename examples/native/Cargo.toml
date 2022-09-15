@@ -6,3 +6,5 @@ edition = "2021"
 
 [dependencies]
 workflow-terminal = {path = "../../"}
+async-trait = "0.1.57"
+workflow-log = { path = "../../../workflow-log" }
