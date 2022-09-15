@@ -64,14 +64,16 @@ impl Terminal {
 
     fn _start(&self)->Result<()> {
         let stdin = stdin();
+        let mut stdout = stdout().into_raw_mode().unwrap();
         for c in stdin.keys() {
+            
             /*
-            write!(self.stdout,
-                    "{}{}",
-                    termion::cursor::Goto(1, 1),
+            write!(stdout,
+                    "{}",
                     termion::clear::CurrentLine)
                     .unwrap();
             */
+            
 
             //log_trace!("e:{:?}", c);
             let key = 
@@ -123,7 +125,7 @@ impl Terminal {
                 self.digest(cmd)?;
             }
 
-            //self.stdout.flush().unwrap();
+            stdout.flush().unwrap();
         }
 
         Ok(())
@@ -150,7 +152,7 @@ impl Terminal {
 	}
 
     fn term_write<S>(&self, s:S) where S:Into<String>{
-        println!("{}", s.into());
+        print!("{}", s.into());
         //print!("{}", s.into());
         //let mut stdout = stdout().into_raw_mode().unwrap();
         /*write!(stdout,
@@ -197,10 +199,17 @@ impl TerminalTrait for Terminal{
         //let cli = self.cli.clone();
         async_std::task::block_on(async move{
             //println!("native-digest: AAA ");
-            {
+            
                 let locked = this.handler.lock().expect("Unable to lock terminal.handler for digest");
-                let _r = locked.digest(cmd).await;
-            }
+                match locked.digest(cmd).await{
+                    Ok(_)=>{
+                        //let _r = this.term_write(text);
+                    }
+                    Err(e)=>{
+                        let _r = this.term_write(e.to_string());
+                    }
+                }
+            
             //println!("native-digest: BBB ");
             match this.intake.after_digest(){
                 Ok(text)=>{

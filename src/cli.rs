@@ -127,7 +127,7 @@ impl Intake {
         data.cursor = 0;
 		data.buffer = Vec::new();
 
-        log_trace!("prompt...");
+        //log_trace!("prompt...");
 
 		Ok(format!("\r\n{}", self.prompt_str()))
 	}
