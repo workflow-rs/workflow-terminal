@@ -21,10 +21,10 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 extern "C" {
 
-    #[wasm_bindgen(js_namespace=window, js_name="FitAddon")]
+    #[wasm_bindgen(js_namespace=["window", "FitAddon"], js_name="FitAddon")]
     type FitAddon;
 
-    #[wasm_bindgen(constructor, js_class = "FitAddon", js_name="FitAddon")]
+    #[wasm_bindgen(constructor, js_class = "window.FitAddon.FitAddon", js_name="FitAddon")]
     fn new() -> FitAddon;
 
     #[wasm_bindgen(method, js_name="proposeDimensions")]
@@ -423,11 +423,11 @@ pub fn load_scripts_impl(load : Closure::<dyn FnMut(web_sys::CustomEvent)->std::
     // "#.as_bytes();
 
     let xterm_js = include_bytes!("../../extern/resources/xterm.js");
-    inject_blob_with_callback("xterm.js", Content::Script(xterm_js), Some(load))?;
+    inject_blob("xterm.js", Content::Script(xterm_js))?;
     let xterm_addon_fit_js = include_bytes!("../../extern/resources/xterm-addon-fit.js");
     inject_blob("xterm-addon-fit.js",Content::Script(xterm_addon_fit_js))?;
     let xterm_addon_web_links_js = include_bytes!("../../extern/resources/xterm-addon-web-links.js");
-    inject_blob("xterm-addon-web-links.js",Content::Script(xterm_addon_web_links_js))?;
+    inject_blob_with_callback("xterm-addon-web-links.js",Content::Script(xterm_addon_web_links_js), Some(load))?;
     let xterm_css = include_bytes!("../../extern/resources/xterm.css");
     inject_blob("xterm.css", Content::Style(xterm_css))?;
     inject_css("
