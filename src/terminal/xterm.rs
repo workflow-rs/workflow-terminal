@@ -18,7 +18,33 @@ use workflow_dom::utils::body;
 use wasm_bindgen::prelude::*;
 
 
-#[wasm_bindgen()]
+#[wasm_bindgen]
+extern "C" {
+
+    #[wasm_bindgen(js_namespace=window, js_name="FitAddon")]
+    type FitAddon;
+
+    #[wasm_bindgen(constructor, js_class = "FitAddon", js_name="FitAddon")]
+    fn new() -> FitAddon;
+
+    #[wasm_bindgen(method, js_name="proposeDimensions")]
+    fn propose_dimensions(this: &FitAddon);
+
+    #[wasm_bindgen(method, js_name="fit")]
+    fn fit(this: &FitAddon);
+}
+
+#[wasm_bindgen]
+extern "C" {
+
+    #[wasm_bindgen(js_namespace=window, js_name="WebLinksAddon")]
+    type WebLinksAddon;
+
+    #[wasm_bindgen(constructor, js_class = "WebLinksAddon", js_name = "WebLinksAddon")]
+    fn new(callback : JsValue) -> WebLinksAddon;
+}
+
+#[wasm_bindgen]
 extern "C" {
 
     #[wasm_bindgen(js_namespace=window, js_name="Terminal")]
@@ -38,6 +64,9 @@ extern "C" {
 
     #[wasm_bindgen(method, js_name="write")]
     fn _write(this: &XtermImpl, text:String);
+
+    #[wasm_bindgen(method, js_name="loadAddon")]
+    fn load_addon(this: &XtermImpl, addon : JsValue);
 }
 
 impl Debug for XtermImpl {
@@ -104,6 +133,9 @@ pub struct Xterm {
     terminal: Arc<Mutex<Option<Arc<Terminal>>>>,
     listener: Arc<Mutex<Option<Listener<JsValue>>>>,
     sink : Arc<Sink>,
+    resize : Arc<Mutex<Option<(ResizeObserver,Listener<JsValue>)>>>,
+    fit : Arc<Mutex<Option<FitAddon>>>,
+    web_links : Arc<Mutex<Option<WebLinksAddon>>>,
 }
 
 impl Xterm{
@@ -124,10 +156,13 @@ impl Xterm{
         let terminal = Xterm{
             element,
             listener: Arc::new(Mutex::new(None)),
-            // xterm: Self::create_term()?,
             xterm: Arc::new(Mutex::new(None)),
             terminal: Arc::new(Mutex::new(None)),
-            sink : Arc::new(Sink::new())
+            sink : Arc::new(Sink::new()),
+            resize: Arc::new(Mutex::new(None)),
+            // addons: Arc::new(Mutex::new(Vec::new())),
+            fit : Arc::new(Mutex::new(None)),
+            web_links : Arc::new(Mutex::new(None)),
         };
         Ok(terminal)
     }
@@ -164,6 +199,16 @@ impl Xterm{
         Ok(term)
     }
 
+    fn init_addons(&self, xterm : &XtermImpl) -> Result<()> {
+        log_trace!("Creating FitAddon...");
+        let fit = FitAddon::new();
+        log_trace!("FitAddon created...");
+        xterm.load_addon(fit.clone().into());
+        *self.fit.lock().unwrap() = Some(fit);
+
+        Ok(())
+    }
+
     pub async fn init(self : &Arc<Self>, terminal : &Arc<Terminal>)->Result<()>{
         log_trace!("Terminal.init()....");
 
@@ -172,8 +217,34 @@ impl Xterm{
 
         let xterm = Self::init_xterm()?;
 
+        self.init_addons(&xterm)?;
+
         xterm.open(&self.element);
 
+        self.init_kbd_listener(&xterm)?;
+        self.init_resize_observer()?;
+
+        *self.xterm.lock().unwrap() = Some(xterm);
+        *self.terminal.lock().unwrap() = Some(terminal.clone());
+        
+        Ok(())
+    }
+
+    fn init_resize_observer(self : &Arc<Self>) -> Result<()> {
+        let this = self.clone();
+        let resize_listener = Listener::new(move |_|->std::result::Result<(), JsValue>{
+            if let Err(err) = this.resize() {
+                log_error!("Resize error: {:?}", err);
+            }
+            Ok(())
+        });
+        let resize_observer = ResizeObserver::new(resize_listener.into_js())?;
+        *self.resize.lock().unwrap() = Some((resize_observer,resize_listener));
+
+        Ok(())
+    }
+
+    fn init_kbd_listener(self : &Arc<Self>, xterm : &XtermImpl) -> Result<()> {
         let this = self.clone();
         let listener = Listener::new(move |e|->std::result::Result<(), JsValue>{
             let term_key = try_get_string(&e, "key")?;
@@ -194,11 +265,8 @@ impl Xterm{
         });
 
         xterm.on_key(listener.into_js());
-
         *self.listener.lock().unwrap() = Some(listener);
-        *self.xterm.lock().unwrap() = Some(xterm);
-        *self.terminal.lock().unwrap() = Some(terminal.clone());
-        
+
         Ok(())
     }
 
@@ -284,6 +352,46 @@ impl Xterm{
             .write(s.into());
     }
 
+    pub fn measure(&self) -> Result<()> {
+        // let charSizeService = term._core._charSizeService
+        let xterm = self.xterm.lock().unwrap();
+        let xterm = xterm.as_ref().unwrap();
+        let core = try_get_js_value(xterm, "_core")
+            .expect("Unable to get xterm core");
+        let char_size_service = try_get_js_value(&core, "_charSizeService")
+            .expect("Unable to get xterm charSizeService");
+        let has_valid_size = try_get_js_value(&char_size_service, "hasValidSize")
+            .expect("Unable to get xterm charSizeService::hasValidSize");
+
+        if has_valid_size.is_falsy() {
+            apply_with_args0(&char_size_service, "measure")?;
+        }
+
+        Ok(())
+    }
+
+    pub fn resize(&self) -> Result<()>{
+        self.measure()?;
+
+        // let fit = self.fit.lock().unwrap().as_ref().clone().unwrap();
+        let fit = self.fit.lock().unwrap();
+        let fit = fit.as_ref().unwrap();
+        // FIXME review if this is correct
+        fit.propose_dimensions();
+        // FIXME review if this is correct
+        fit.fit();
+
+		// if(charSizeService && !charSizeService.hasValidSize){
+		// 	charSizeService.measure()
+		// 	//if(term._core._renderService)
+		// 	//	term._core._renderService._updateDimensions();
+		// }
+		// let addon = this.addons.fit.instance;
+		// let dimensions = addon.proposeDimensions()
+		// addon.fit();
+
+        Ok(())
+    }
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -330,4 +438,27 @@ pub fn load_scripts_impl(load : Closure::<dyn FnMut(web_sys::CustomEvent)->std::
         }
     ")?;
     Ok(())
+}
+
+
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen (extends = :: js_sys :: Object , js_name = ResizeObserver , typescript_type = "ResizeObserver")]
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub type ResizeObserver;
+    #[wasm_bindgen(catch, constructor, js_class = "ResizeObserver")]
+    pub fn new(callback: &::js_sys::Function) -> std::result::Result<ResizeObserver, JsValue>;
+    #[wasm_bindgen (method , structural , js_class = "ResizeObserver" , js_name = disconnect)]
+    pub fn disconnect(this: &ResizeObserver);
+    #[wasm_bindgen (method , structural , js_class = "ResizeObserver" , js_name = observe)]
+    pub fn observe(this: &ResizeObserver, target: &Element);
+    // # [wasm_bindgen (method , structural , js_class = "ResizeObserver" , js_name = observe)]
+    // pub fn observe_with_options(
+    //     this: &ResizeObserver,
+    //     target: &Element,
+    //     options: &ResizeObserverOptions,
+    // );
+    // # [wasm_bindgen (method , structural , js_class = "ResizeObserver" , js_name = unobserve)]
+    pub fn unobserve(this: &ResizeObserver, target: &Element);
 }
