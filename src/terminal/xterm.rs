@@ -65,8 +65,14 @@ extern "C" {
     #[wasm_bindgen(method, js_name="write")]
     fn _write(this: &XtermImpl, text:String);
 
+    #[wasm_bindgen(method, js_name="paste")]
+    fn _paste(this: &XtermImpl, text:String);
+
     #[wasm_bindgen(method, js_name="loadAddon")]
     fn load_addon(this: &XtermImpl, addon : JsValue);
+
+    #[wasm_bindgen(method, getter, js_name="element")]
+    fn get_element(this: &XtermImpl)->Element;
 }
 
 impl Debug for XtermImpl {
@@ -80,10 +86,14 @@ impl XtermImpl {
     fn write<T:Into<String>>(&self, text:T){
         self._write(text.into());
     }
+    fn paste<T:Into<String>>(&self, text:T){
+        self._paste(text.into());
+    }
 }
 
 enum Ctl {
     SinkEvent(SinkEvent),
+    Paste,
     Close
 }
 
@@ -136,6 +146,7 @@ pub struct Xterm {
     resize : Arc<Mutex<Option<(ResizeObserver,Listener<JsValue>)>>>,
     fit : Arc<Mutex<Option<FitAddon>>>,
     web_links : Arc<Mutex<Option<WebLinksAddon>>>,
+    clipboard_listerner:  Arc<Mutex<Option<Listener<web_sys::KeyboardEvent>>>>,
 }
 
 impl Xterm{
@@ -163,6 +174,7 @@ impl Xterm{
             // addons: Arc::new(Mutex::new(Vec::new())),
             fit : Arc::new(Mutex::new(None)),
             web_links : Arc::new(Mutex::new(None)),
+            clipboard_listerner: Arc::new(Mutex::new(None)),
         };
         Ok(terminal)
     }
@@ -225,7 +237,7 @@ impl Xterm{
 
         self.init_kbd_listener(&xterm)?;
         self.init_resize_observer()?;
-        self.init_clipboard()?;
+        self.init_clipboard(&xterm)?;
 
         *self.xterm.lock().unwrap() = Some(xterm);
         *self.terminal.lock().unwrap() = Some(terminal.clone());
@@ -233,19 +245,23 @@ impl Xterm{
         Ok(())
     }
 
-    fn init_clipboard(self : &Arc<Self>) -> Result<()> {
+    fn init_clipboard(self : &Arc<Self>, xterm : &XtermImpl) -> Result<()> {
 
         let this = self.clone();
-        let clipboard_listener = Listener::new(move |e:JsValue|->std::result::Result<(), JsValue>{
-
+        let clipboard_listener = Listener::new(move |e:web_sys::KeyboardEvent|->std::result::Result<(), JsValue>{
+            //log_trace!("ssssss: key:{}, ctrl_key:{}, meta_key:{},  {:?}", e.key(), e.ctrl_key(), e.meta_key(), e);
+            if e.key() == "v" && (e.ctrl_key() || e.meta_key()){
+                this.sink.sender.try_send(Ctl::Paste).expect("Unable to send paste Ctl");
+            }
             // TODO - detect event type and if paste, paste the content...
             Ok(())
         });
-
-
+        let mut locked = self.clipboard_listerner.lock().expect("Unable to lock");
+        
         // TODO install clipboard handler
-        // Clipboard::add_event_listener_with_callback();
-
+        //add_clipboard_event_listener_with_callback("paste", clipboard_listener.into_js());
+        xterm.get_element().add_event_listener_with_callback("keydown", clipboard_listener.into_js())?;
+        *locked = Some(clipboard_listener);
 
 
         Ok(())
@@ -270,7 +286,7 @@ impl Xterm{
         let this = self.clone();
         let listener = Listener::new(move |e|->std::result::Result<(), JsValue>{
             let term_key = try_get_string(&e, "key")?;
-            //log_trace!("on_key: {:?}, key:{}", e, key);
+            //log_trace!("on_key: {:?}, key:{}", e, term_key);
             let dom_event = try_get_js_value(&e, "domEvent")?;
             let ctrl_key = try_get_bool_from_prop(&dom_event, "ctrlKey").unwrap_or(false);
             let alt_key = try_get_bool_from_prop(&dom_event, "altKey").unwrap_or(false);
@@ -300,6 +316,21 @@ impl Xterm{
                 Ctl::SinkEvent(event) => {
                     self.sink(event).await?;
                 },
+                Ctl::Paste => {
+                    //break;
+                    let data_js_value = get_clipboard_data().await;
+                    match data_js_value.as_string(){
+                        Some(str)=>{
+                            //log_trace!("str: {:?}", str);
+                            self.paste(str);
+                        },
+                        None=>{
+                            //return Err(JsValue::from("Unable to convert pasted text to String")));
+                        }
+                    }
+
+                    
+                }
                 Ctl::Close => {
                     break;
                 }
@@ -331,6 +362,7 @@ impl Xterm{
             },
             "Enter" => Key::Enter,
             _=>{
+                //log_trace!("ctrl_key:{}, alt_key:{}, meta_key:{}", e.ctrl_key, e.alt_key, e.meta_key);
                 let printable = !e.meta_key; // ! (e.ctrl_key || e.alt_key || e.meta_key);
                 if !printable{
                     return Ok(());
@@ -339,7 +371,16 @@ impl Xterm{
                 if let Some(c) = e.key.chars().next(){
                     //log_trace!("Char2: {}, {}", e.key, c);
                     //log_trace!("e:{:?}", e);
+                    
                     if e.ctrl_key{
+                        //log_trace!("ctrl_key:####");
+                        /*
+                        if c == 'v' {
+                            log_trace!("ctrl_key:v");
+                            let data = get_clipboard_data().await;
+                            log_trace!("data:{:?}", data);
+                        }
+                        */
                         Key::Ctrl(c)
                     }else{
                         if e.alt_key{
@@ -372,6 +413,14 @@ impl Xterm{
             .as_ref()
             .expect("Xterm is not initialized")
             .write(s.into());
+    }
+    pub fn paste<S>(&self, s:S) where S:Into<String>{
+        self.xterm
+            .lock()
+            .unwrap()
+            .as_ref()
+            .expect("Xterm is not initialized")
+            .paste(s.into());
     }
 
     pub fn measure(&self) -> Result<()> {
@@ -487,6 +536,7 @@ extern "C" {
 
 #[wasm_bindgen]
 extern "C" {
+    /*
     #[wasm_bindgen (extends = EventTarget , extends = :: js_sys :: Object , js_name = Clipboard , typescript_type = "Clipboard")]
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub type Clipboard;
@@ -498,5 +548,16 @@ extern "C" {
     pub fn write(this: &Clipboard, data: &::wasm_bindgen::JsValue) -> ::js_sys::Promise;
     #[wasm_bindgen (method , structural , js_class = "Clipboard" , js_name = writeText)]
     pub fn write_text(this: &Clipboard, data: &str) -> ::js_sys::Promise;
+    */
+    
+    //#[wasm_bindgen (js_namespace=["window", "navigator"], js_name = "navigator.clipboard", js_class = "navigator.clipboard")]
+    //#[derive(Debug, Clone, PartialEq)]
+    //type clipboard;
+    
+    //#[wasm_bindgen (js_namespace=["navigator", "clipboard"], js_name="addEventListener")]
+    //fn add_clipboard_event_listener_with_callback(name: &str, listener: &::js_sys::Function);
+
+    #[wasm_bindgen (js_namespace=["navigator", "clipboard"], js_name="readText")]
+    async fn get_clipboard_data()-> JsValue;
 }
 

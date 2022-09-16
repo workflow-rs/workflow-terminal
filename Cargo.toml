@@ -36,6 +36,7 @@ features = [
     'Blob',
     'CustomEvent',
     'EventTarget',
+    'KeyboardEvent',
 
     # 'console',
     # 'Document',
