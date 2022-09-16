@@ -70,7 +70,7 @@ impl Inner {
 pub trait Cli : Sync + Send {
     fn init(&self, _term : &Arc<Terminal>) -> Result<()> { Ok(()) }
     async fn digest(&self, term : &Arc<Terminal>, cmd: String) -> Result<()>;
-    async fn complete(&self, term : &Arc<Terminal>, substring : String) -> Result<Vec<String>>;
+    async fn complete(&self, term : &Arc<Terminal>, cmd : String) -> Result<Vec<String>>;
 }
 
 
@@ -106,10 +106,8 @@ impl Terminal {
     }
 
     pub async fn init(self : &Arc<Self>)->Result<()>{
-
         self.handler.init(self)?;
         self.term.init(self).await?;
-
         Ok(())
     }
 

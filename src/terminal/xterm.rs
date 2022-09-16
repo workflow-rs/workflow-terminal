@@ -183,10 +183,9 @@ impl Xterm{
             let alt_key = try_get_bool_from_prop(&dom_event, "altKey").unwrap_or(false);
             let meta_key = try_get_bool_from_prop(&dom_event, "metaKey").unwrap_or(false);
             
-            let key_code = try_get_u64_from_prop(&dom_event, "keyCode")?;
+            let _key_code = try_get_u64_from_prop(&dom_event, "keyCode")?;
             let key = try_get_string(&dom_event, "key")?;
-            log_trace!("key_code: {}, key:{}, ctl_key:{}", key_code, key, ctrl_key);
-            //let locked = this.lock().expect("msg");
+            // log_trace!("key_code: {}, key:{}, ctl_key:{}", _key_code, key, ctrl_key);
             this.sink.sender.try_send(
                 Ctl::SinkEvent(SinkEvent::new(key, term_key, ctrl_key, alt_key, meta_key))
             ).unwrap();
@@ -281,7 +280,7 @@ impl Xterm{
             .lock()
             .unwrap()
             .as_ref()
-            .unwrap()
+            .expect("Xterm is not initialized")
             .write(s.into());
     }
 
