@@ -1,5 +1,6 @@
 use cfg_if::cfg_if;
 use regex::Regex;
+//use workflow_log::log_trace;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, MutexGuard, LockResult, atomic::AtomicBool};
 use crate::result::Result;
@@ -179,9 +180,12 @@ impl Terminal {
     fn inject_impl(&self, data : &mut Inner, text : String) -> Result<()> {
         let len = text.len();
         let mut vec = data.buffer.clone();
-        let _removed:Vec<String> = vec.splice(data.cursor..(data.cursor+0), [text]).collect();
+        //log_trace!("before: vec.len(): {}", vec.len());
+        let _removed:Vec<String> = vec.splice(data.cursor..(data.cursor+0), text.chars().map(|a|a.to_string())).collect();
+        //let len_new = vec.len();
         data.buffer = vec;
-        self.trail(data.cursor, &data.buffer, true, false, 1);
+        //log_trace!("after: vec.len(): {}, data.cursor:{}, buffer:{}, buffer.len():{}", len_new,  data.cursor+len, data.buffer.join(""), data.buffer.len());
+        self.trail(data.cursor, &data.buffer, true, false, len);
         data.cursor = data.cursor+len;
         Ok(())
     }
