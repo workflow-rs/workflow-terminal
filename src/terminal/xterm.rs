@@ -37,10 +37,10 @@ extern "C" {
 #[wasm_bindgen]
 extern "C" {
 
-    #[wasm_bindgen(js_namespace=window, js_name="WebLinksAddon")]
+    #[wasm_bindgen(js_namespace=["window","WebLinksAddon"], js_name="WebLinksAddon")]
     type WebLinksAddon;
 
-    #[wasm_bindgen(constructor, js_class = "WebLinksAddon", js_name = "WebLinksAddon")]
+    #[wasm_bindgen(constructor, js_class = "window.WebLinksAddon.WebLinksAddon", js_name = "WebLinksAddon")]
     fn new(callback : JsValue) -> WebLinksAddon;
 }
 
@@ -172,6 +172,7 @@ impl Xterm{
         let theme_opts = Vec::from([
             ("background", JsValue::from("rgba(255,255,255,1)")),
 			("foreground", JsValue::from("#000")),
+            ("selection", JsValue::from("rgba(0,0,0,0.25)")),
             // ("background", JsValue::from("rgba(0,0,0,1)")),
 			// ("foreground", JsValue::from("#FFF")),
 			("cursor", JsValue::from("#000"))
@@ -183,6 +184,7 @@ impl Xterm{
         let options = js_sys::Object::new();
         let opts = Vec::from([
             ("allowTransparency", JsValue::from(true)),
+            // ("allowTransparency", JsValue::from(false)),
             ("fontFamily", JsValue::from("Consolas, Ubuntu Mono, courier-new, courier, monospace")),
             ("fontSize", JsValue::from(20)),
             ("cursorBlink", JsValue::from(true)),
@@ -239,6 +241,7 @@ impl Xterm{
             Ok(())
         });
         let resize_observer = ResizeObserver::new(resize_listener.into_js())?;
+        resize_observer.observe(&self.element);
         *self.resize.lock().unwrap() = Some((resize_observer,resize_listener));
 
         Ok(())
@@ -432,9 +435,9 @@ pub fn load_scripts_impl(load : Closure::<dyn FnMut(web_sys::CustomEvent)->std::
     inject_blob("xterm.css", Content::Style(xterm_css))?;
     inject_css("
         .terminal{
-            width:100%;
-            border:2px solid #DDD;
-            min-height:90vh;
+            width:100vw;
+            /*border:1px solid #DDD;*/
+            height:100vh;
         }
     ")?;
     Ok(())
