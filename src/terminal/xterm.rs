@@ -47,6 +47,14 @@ extern "C" {
 #[wasm_bindgen]
 extern "C" {
 
+    #[wasm_bindgen(extends = js_sys::Object)]
+    type XtermEvent;
+
+    #[wasm_bindgen(method, getter, js_name="domEvent")]
+    fn get_dom_event(this: &XtermEvent) -> web_sys::KeyboardEvent;
+    #[wasm_bindgen(method, getter, js_name="key")]
+    fn get_key(this: &XtermEvent) -> String;
+
     #[wasm_bindgen(js_namespace=window, js_name="Terminal")]
     type XtermImpl;
 
@@ -141,7 +149,7 @@ pub struct Xterm {
     pub element: Element,
     xterm:Arc<Mutex<Option<XtermImpl>>>,
     terminal: Arc<Mutex<Option<Arc<Terminal>>>>,
-    listener: Arc<Mutex<Option<Listener<JsValue>>>>,
+    listener: Arc<Mutex<Option<Listener<XtermEvent>>>>,
     sink : Arc<Sink>,
     resize : Arc<Mutex<Option<(ResizeObserver,Listener<JsValue>)>>>,
     fit : Arc<Mutex<Option<FitAddon>>>,
@@ -284,16 +292,24 @@ impl Xterm{
 
     fn init_kbd_listener(self : &Arc<Self>, xterm : &XtermImpl) -> Result<()> {
         let this = self.clone();
-        let listener = Listener::new(move |e|->std::result::Result<(), JsValue>{
-            let term_key = try_get_string(&e, "key")?;
+        let listener = Listener::new(move |e:XtermEvent|->std::result::Result<(), JsValue>{
+            //let term_key = try_get_string(&e, "key")?;
+            let term_key = e.get_key();
+            let dom_event = e.get_dom_event();
+            let key = dom_event.key();
+            let ctrl_key = dom_event.ctrl_key();
+            let alt_key = dom_event.alt_key();
+            let meta_key = dom_event.meta_key();
+
             //log_trace!("on_key: {:?}, key:{}", e, term_key);
+            /*
             let dom_event = try_get_js_value(&e, "domEvent")?;
             let ctrl_key = try_get_bool_from_prop(&dom_event, "ctrlKey").unwrap_or(false);
             let alt_key = try_get_bool_from_prop(&dom_event, "altKey").unwrap_or(false);
             let meta_key = try_get_bool_from_prop(&dom_event, "metaKey").unwrap_or(false);
-            
-            let _key_code = try_get_u64_from_prop(&dom_event, "keyCode")?;
-            let key = try_get_string(&dom_event, "key")?;
+            */
+            //let _key_code = try_get_u64_from_prop(&dom_event, "keyCode")?;
+            //let key = try_get_string(&dom_event, "key")?;
             // log_trace!("key_code: {}, key:{}, ctl_key:{}", _key_code, key, ctrl_key);
             this.sink.sender.try_send(
                 Ctl::SinkEvent(SinkEvent::new(key, term_key, ctrl_key, alt_key, meta_key))
