@@ -1,5 +1,5 @@
 use workflow_dom::inject::*;
-use web_sys::Element;
+use web_sys::{ Element, EventTarget };
 use workflow_dom::utils::*;
 use workflow_log::*;
 use crate::Result;
@@ -225,10 +225,29 @@ impl Xterm{
 
         self.init_kbd_listener(&xterm)?;
         self.init_resize_observer()?;
+        self.init_clipboard()?;
 
         *self.xterm.lock().unwrap() = Some(xterm);
         *self.terminal.lock().unwrap() = Some(terminal.clone());
         
+        Ok(())
+    }
+
+    fn init_clipboard(self : &Arc<Self>) -> Result<()> {
+
+        let this = self.clone();
+        let clipboard_listener = Listener::new(move |e:JsValue|->std::result::Result<(), JsValue>{
+
+            // TODO - detect event type and if paste, paste the content...
+            Ok(())
+        });
+
+
+        // TODO install clipboard handler
+        // Clipboard::add_event_listener_with_callback();
+
+
+
         Ok(())
     }
 
@@ -465,3 +484,19 @@ extern "C" {
     // # [wasm_bindgen (method , structural , js_class = "ResizeObserver" , js_name = unobserve)]
     pub fn unobserve(this: &ResizeObserver, target: &Element);
 }
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen (extends = EventTarget , extends = :: js_sys :: Object , js_name = Clipboard , typescript_type = "Clipboard")]
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub type Clipboard;
+    #[wasm_bindgen (method , structural , js_class = "Clipboard" , js_name = read)]
+    pub fn read(this: &Clipboard) -> ::js_sys::Promise;
+    #[wasm_bindgen (method , structural , js_class = "Clipboard" , js_name = readText)]
+    pub fn read_text(this: &Clipboard) -> ::js_sys::Promise;
+    #[wasm_bindgen (method , structural , js_class = "Clipboard" , js_name = write)]
+    pub fn write(this: &Clipboard, data: &::wasm_bindgen::JsValue) -> ::js_sys::Promise;
+    #[wasm_bindgen (method , structural , js_class = "Clipboard" , js_name = writeText)]
+    pub fn write_text(this: &Clipboard, data: &str) -> ::js_sys::Promise;
+}
+
