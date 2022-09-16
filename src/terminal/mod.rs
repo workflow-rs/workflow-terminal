@@ -170,12 +170,19 @@ impl Terminal {
         self.terminate.store(true, Ordering::SeqCst);
     }
 
-    fn inject(&self, data : &mut Inner, term_key : String) -> Result<()> {
+    pub fn inject(&self, text : String) -> Result<()> {
+        let mut data = self.inner()?;
+        self.inject_impl(&mut data, text)?;
+        Ok(())
+    }
+
+    fn inject_impl(&self, data : &mut Inner, text : String) -> Result<()> {
+        let len = text.len();
         let mut vec = data.buffer.clone();
-        let _removed:Vec<String> = vec.splice(data.cursor..(data.cursor+0), [term_key]).collect();
+        let _removed:Vec<String> = vec.splice(data.cursor..(data.cursor+0), [text]).collect();
         data.buffer = vec;
         self.trail(data.cursor, &data.buffer, true, false, 1);
-        data.cursor = data.cursor+1;
+        data.cursor = data.cursor+len;
         Ok(())
     }
 
@@ -305,8 +312,8 @@ impl Terminal {
                 return Ok(());
             },
             Key::Char(ch)=>{
-                let mut data = self.inner()?;
-                self.inject(&mut data, ch.to_string())?;
+                // let mut data = self.inner()?;
+                self.inject(ch.to_string())?;
             },
             _ => {
                 return Ok(());
