@@ -15,6 +15,7 @@ regex = "1.5.5"
 workflow-log = { path = "../workflow-log" }
 workflow-wasm = { path = "../workflow-wasm" }
 workflow-dom = { path = "../workflow-dom" }
+workflow-core = { path = "../workflow-core" }
 thiserror = "1.0.32"
 numtoa = "0.2.4"
 wasm-bindgen-futures="*"

@@ -1,83 +1,30 @@
 // use js_sys::*;
 // use wasm_bindgen::JsCast;
-use cfg_if::cfg_if;
+// use cfg_if::cfg_if;
 // use web_sys::{Url,Blob};
 
 pub mod error;
 pub mod result;
 pub mod loader;
-pub mod cli;
 pub mod keys;
 pub mod cursor;
+pub mod terminal;
 
 //use js_sys::Promise;
 pub use result::Result;
-pub use cli::CliHandler;
-use std::sync::Arc;
-use std::future::Future;
+pub use terminal::Cli;
+pub use terminal::Terminal;
+pub use terminal::Options;
+pub use terminal::parse;
+
+// use std::future::Future;
 //use std::time;
 //use async_std::task::sleep;
 
-cfg_if! {
-    if #[cfg(target_arch = "wasm32")] {
-        mod xterm;
-        pub use xterm::{Terminal, Options};
-        use workflow_dom::utils::body;
-        use wasm_bindgen::prelude::*;
-        use workflow_log::*;
-        use wasm_bindgen_futures::spawn_local;
-
-        pub fn spawn<F>(future: F) where F: Future<Output = ()> + 'static{
-            spawn_local(future)
-        }
-
-        pub fn get_terminal() -> Result<Arc<Terminal>> {
-            let term = unsafe { (&TERMINAL).as_ref().unwrap().clone() };
-            Ok(term.clone())
-        }
-
-        //#[wasm_bindgen(start)]
-        pub fn load_scripts() ->Result<()>{
-            loader::load_scripts_impl(Closure::<dyn FnMut(web_sys::CustomEvent)->std::result::Result<(), JsValue>>::new(move|_|->std::result::Result<(), JsValue>{
-                log_trace!("init_terminal...");
-                init_terminal()?;
-                Ok(())
-            })).unwrap();
-            Ok(())
-        }
-        
-        static mut TERMINAL : Option<Arc<Terminal>> = None;
-        static mut INIT_FN : Option<Box<dyn Fn()->Result<()>>> = None;
-    
-        pub fn init_terminal()->Result<()>{
-            let body_el = body()?;
-            let terminal = Terminal::new(&body_el, Options{
-                prompt:"$ ".to_string()
-            })?;
-            unsafe { TERMINAL = Some(terminal); }
-
-            if let Some(init_fn) = unsafe { (&INIT_FN).as_ref() }{
-                init_fn()?;
-            }
-
-            Ok(())
-        }
-
-        pub fn on_terminal_ready(f: Box<dyn Fn()->Result<()>>){
-            unsafe { INIT_FN = Some(f); }
-        }
-        
+// use std::sync::Arc;
+// use std::sync::Mutex;
 
 
-    } else {
-        mod native;
-        pub use native::Options;
-        pub use native::Terminal;
-
-        // ^ TODO load terminal
-        
-    }
-}
 
 
 
@@ -196,10 +143,10 @@ pub fn inject_init_terminal()->Result<()>{
 }
 */
 
-#[cfg(test)]
-mod test{
-    #[test]
-    pub fn cli(){
-        println!("cli test1");
-    }
-}
+// #[cfg(test)]
+// mod test{
+//     #[test]
+//     pub fn cli(){
+//         println!("cli test1");
+//     }
+// }

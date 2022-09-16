@@ -1,12 +1,12 @@
 [package]
-name = "workflow-terminal-cli"
+name = "cli"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib", "lib"]
 
 [dependencies]
 workflow-terminal = {path = "../../"}
 async-trait = "0.1.57"
 workflow-log = { path = "../../../workflow-log" }
-async-std = { version = "1.12.0", features = ['attributes'] }
-cli = { path = "../cli" }
