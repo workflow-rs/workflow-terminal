@@ -1,12 +1,8 @@
-// use wasm_bindgen::prelude::*;
 use workflow_dom::inject::*;
-// use workflow_dom::result::Result;
-
 use web_sys::Element;
 use workflow_dom::utils::*;
 use workflow_log::*;
 use crate::Result;
-// use crate::cli::{Intake, Terminal as TerminalTrait, CliHandler, DefaultHandler};
 use crate::keys::Key;
 use crate::terminal::Terminal;
 use crate::terminal::Options;
@@ -18,8 +14,10 @@ use std::sync::{Mutex, Arc};
 use workflow_wasm::listener::Listener;
 use workflow_wasm::utils::*;
 use workflow_core::channel::{oneshot,unbounded,Sender,Receiver};
+use workflow_dom::utils::body;
+use wasm_bindgen::prelude::*;
 
-/// #[wasm_bindgen(module = "/defined-in-js.js")]
+
 #[wasm_bindgen()]
 extern "C" {
 
@@ -81,51 +79,6 @@ impl SinkEvent{
     }
 }
 
-
-
-use workflow_dom::utils::body;
-use wasm_bindgen::prelude::*;
-// use workflow_log::*;
-// use wasm_bindgen_futures::spawn_local;
-
-// pub fn spawn<F>(future: F) where F: Future<Output = ()> + 'static{
-//     spawn_local(future)
-// }
-
-// pub fn get_terminal() -> Result<Arc<Interface>> {
-//     let term = unsafe { (&TERMINAL).as_ref().unwrap().clone() };
-//     Ok(term.clone())
-// }
-
-
-// static mut TERMINAL : Option<Arc<Terminal>> = None;
-// static mut INIT_FN : Option<Box<dyn Fn()->Result<()>>> = None;
-
-// pub fn init_terminal()->Result<()>{
-//     let body_el = body()?;
-//     let terminal = Terminal::new(&body_el, Options{
-//         prompt:"$ ".to_string()
-//     })?;
-//     unsafe { TERMINAL = Some(terminal); }
-
-//     if let Some(init_fn) = unsafe { (&INIT_FN).as_ref() }{
-//         init_fn()?;
-//     }
-
-//     Ok(())
-// }
-
-// pub fn on_terminal_ready(f: Box<dyn Fn()->Result<()>>){
-//     unsafe { INIT_FN = Some(f); }
-// }
-
-
-
-
-// pub struct Options{
-//     pub prompt:String
-// }
-
 #[derive(Clone)]
 pub struct Sink {
     receiver : Receiver<Ctl>,
@@ -151,10 +104,6 @@ pub struct Xterm {
     terminal: Arc<Mutex<Option<Arc<Terminal>>>>,
     listener: Arc<Mutex<Option<Listener<JsValue>>>>,
     sink : Arc<Sink>,
-
-    // intake: Arc<Intake>,
-    // handler: Arc<Mutex<Arc<dyn CliHandler>>>,
-    //cli: Option<Cli>
 }
 
 impl Xterm{
@@ -179,12 +128,7 @@ impl Xterm{
             xterm: Arc::new(Mutex::new(None)),
             terminal: Arc::new(Mutex::new(None)),
             sink : Arc::new(Sink::new())
-
-            // intake: Arc::new(Intake::new(Arc::new(Mutex::new(opt.prompt)))?),
-            // handler: Arc::new(Mutex::new(Arc::new(DefaultHandler::new()))),
-            //cli: None
         };
-        // let term = terminal.init()?;
         Ok(terminal)
     }
 
@@ -230,7 +174,6 @@ impl Xterm{
 
         xterm.open(&self.element);
 
-        // let self_arc = Arc::new(self);
         let this = self.clone();
         let listener = Listener::new(move |e|->std::result::Result<(), JsValue>{
             let term_key = try_get_string(&e, "key")?;
@@ -245,20 +188,14 @@ impl Xterm{
             log_trace!("key_code: {}, key:{}, ctl_key:{}", key_code, key, ctrl_key);
             //let locked = this.lock().expect("msg");
             this.sink.sender.try_send(
-
                 Ctl::SinkEvent(SinkEvent::new(key, term_key, ctrl_key, alt_key, meta_key))
-
             ).unwrap();
 
-            // this.sink(SinkEvent::new(key, term_key, ctrl_key, alt_key, meta_key), e)?;
-            
             Ok(())
         });
-        //let locked = self_arc.lock().expect("Unable to lock terminal");
+
         xterm.on_key(listener.into_js());
-        // let self_arc_clone = self_arc.clone();
-        
-        //let mut locked_listener =  
+
         *self.listener.lock().unwrap() = Some(listener);
         *self.xterm.lock().unwrap() = Some(xterm);
         *self.terminal.lock().unwrap() = Some(terminal.clone());
@@ -287,7 +224,6 @@ impl Xterm{
         self.sink.sender.try_send(Ctl::Close).expect("Unable to send exit Ctl");
     }
 
-    // async fn sink(&self, e:SinkEvent, _e:JsValue)->Result<()>{
     async fn sink(&self, e:SinkEvent)->Result<()>{
 
         let key = 
@@ -303,10 +239,7 @@ impl Xterm{
             "Tab"=>{
                 //TODO
                 return Ok(());
-            }
-            // "Inject"=>{
-            //     inject(term_key);
-            // }
+            },
             "Enter" => Key::Enter,
             _=>{
                 let printable = !e.meta_key; // ! (e.ctrl_key || e.alt_key || e.meta_key);
@@ -340,40 +273,8 @@ impl Xterm{
             .unwrap()
             .ingest(key, e.term_key).await?;
         
-
-
-
-        // for text in res.texts{
-        //     self.xterm.write(text);
-        // }
-        // if let Some(cmd) = res.cmd{
-        //     self.digest(cmd)?;
-        // }
-
-        /*
-        if let Some(cli) = self.cli.as_ref(){
-            cli.intake(key, e.term_key)?;
-        }
-        */
-
-
         Ok(())
     }
-
-    // pub fn write_str<S>(&self, text:S)->Result<()> where S:Into<String>{
-    //     self.xterm.write(text.into());
-    //     Ok(())
-    // }
-
-    // pub fn prompt(&self)->Result<()>{
-    //     self.xterm.write(self.intake.prompt()?);
-    //     Ok(())
-    // }
-
-    // pub fn inner(&self) -> LockResult<MutexGuard<'_, Inner>> {
-    //     self.inner.lock()
-    // }
-
 
     pub fn write<S>(&self, s:S) where S:Into<String>{
         self.xterm
@@ -384,89 +285,9 @@ impl Xterm{
             .write(s.into());
     }
 
-    
-    // pub fn writeln<S>(&self, s:S) where S:Into<String>{
-    //     self.xterm.write(format!("{}\n\x1B[2K\r", s.into()));
-    //     // stdout.flush().unwrap();
-
-    // }
-
-
-    // fn write_vec(&self, mut str_list:Vec<String>) ->Result<()> {
-    //     let data = self.intake.inner()?;
-		
-    //     str_list.push("\r\n".to_string());
-        
-	// 	if self.intake.is_running() {
-	// 		self.xterm.write(str_list.join(""));
-	// 	}else {
-	// 		self.xterm.write(format!("\x1B[2K\r{}", str_list.join("")));
-	// 		let prompt = format!("{}{}", self.intake.prompt_str(), data.buffer.join(""));
-	// 		self.xterm.write(prompt);
-	// 		let l = data.buffer.len() - data.cursor;
-	// 		for _ in 0..l{
-	// 			self.xterm.write("\x08".to_string());
-    //         }
-	// 	}
-
-    //     Ok(())
-	// }
-
-    // fn _write<S>(&self, s : S)->Result<()> where S : Into<String> {
-    //     self.xterm.write(s.into());
-    //     Ok(())
-    // }
-
-	/*
-    fn write<S>(&self, s : S)-> Result<()>  where S : Into<String> {
-        let s:String = s.into();
-		self.write_vec(Vec::from([s]))?;
-        Ok(())
-	}
-    */
-
-  
 }
 
-
-// impl TerminalTrait for Xterm{
-//     fn write(&self, s: String) -> Result<()>{
-//         //self.xterm.write(s);
-//         self.write_vec(Vec::from([s]))?;
-//         Ok(())
-//     }
-
-//     fn start(&self)-> Result<()> {
-//         //self._start()?;
-//         Ok(())
-//     }
-
-//     fn digest(&self, cmd: String) -> Result<()>{
-//         let hander = self.handler.clone();
-//         let intake = self.intake.clone();
-//         let term = self.xterm.clone();
-//         crate::spawn(async move{
-//             let locked = hander.lock().expect("Unable to lock terminal.handler for digest");
-//             let _r = locked.digest(cmd).await;
-//             match intake.after_digest(){
-//                 Ok(text)=>{
-//                     let _r = utils::apply_with_args1(&term, "write", JsValue::from(text));
-//                 }
-//                 Err(_e)=>{
-//                     //
-//                 }
-//             }
-//         });
-//         Ok(())
-//     }
-
-//     fn register_handler(&self, hander: Arc<dyn CliHandler>)-> Result<()> {
-//         let mut locked = self.handler.lock().expect("Unable to lock terminal.handler");
-//         *locked = hander;
-//         Ok(())
-//     }
-// }
-
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 static mut XTERM_LOADED: bool = false;
 

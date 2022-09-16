@@ -13,10 +13,8 @@ pub enum Key {
     BackTab,
     Delete,
     Insert,
-    // F(u8),
     Char(char),
     Alt(char),
     Ctrl(char),
-    // Null,
     Esc,
 }

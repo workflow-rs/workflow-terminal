@@ -1,39 +1,20 @@
-// extern crate termion;
 use cfg_if::cfg_if;
 use regex::Regex;
-// use termion::event::Key as K;
-// use termion::input::TermRead;
-// use termion::raw::IntoRawMode;
-// use termion::raw::RawTerminal;
-// use std::io::{Write, Stdout, Stdin, stdout, stdin};
-// //use workflow_log::*;
-// use crate::cli::{Intake, Cli};//, Terminal as TerminalTrait};
-// use crate::keys::Key;
-// use crate::Result;
-// use crate::Options;
-// use std::sync::{Arc,Mutex};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, MutexGuard, LockResult, atomic::AtomicBool};
-//use workflow_log::*;
 use crate::result::Result;
 use crate::keys::Key;
 use crate::cursor::*;
-// use workflow_log::*;
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         mod xterm;
-        // pub use xterm::{Terminal, Options};
         pub use xterm::Xterm as Interface;
 
 
     } else {
         mod native;
-        // pub use native::Options;
         pub use native::Termion as Interface;
-
-        // ^ TODO load terminal
-        
     }
 }
 
@@ -64,93 +45,7 @@ impl Options{
     }
 }
 
-
-/* 
-pub trait Term : Sync + Send {
-    fn write(&self, s: String) -> Result<()>;
-    fn start(&self)-> Result<()>;
-    fn digest(&self, cmd: String) -> Result<()>;
-    fn register_handler(&self, hander: Arc<dyn Cli>)-> Result<()>;
-}
-
-
-pub struct Terminal {
-    intake: Option<Arc<Intake>>,
-    handler: Option<Arc<dyn Cli>>,
-    prompt : Option<Arc<Mutex<String>>>,
-    term : Arc<Mutex<Option<Arc<Interface>>>>,
-}
-
-impl Terminal {
-    pub fn new(cli : &Arc<dyn Cli>) -> Terminal {
-        Self::new_with_options(cli, Options::default())
-    }
-    
-    pub fn new_with_options(cli : &Arc<dyn Cli>, options : Options) -> Terminal {
-
-        let term = Interface::new();
-
-        Terminal {
-            intake: Some(Arc::new(Intake::new(cli.clone()))),
-            handler: Some(cli.clone()),
-            term: None,
-            prompt : None,
-        }
-    }
-
-    // pub fn with_cli(mut self, cli : &Arc<dyn Cli>) -> Self {
-    //     self.handler = Some(cli.clone());
-    //     self.intake = Some(Arc::new(Intake::new(cli.clone())));
-    //     self
-    // }
-
-    pub async fn init(self : &Arc<Self>) -> Result<()> {
-        let mut term = Interface::new()
-            .with_intake(&self.intake)
-            .with_terminal(self);
-        *self.term.lock()? = Some(Arc::new(term));
-        Ok(())
-    }
-
-    pub async fn run(self) -> Result<()> {
-        self.term.run().await?;
-        Ok(())
-    }
-
-    pub fn term(&self) -> Arc<Interface> {
-        self.term.lock()?.as_ref().unwrap()
-    }
-
-    pub fn intake(&self) -> Arc<Intake> {
-        self.intake.clone()
-    }
-
-    pub fn handler(&self) -> Arc<dyn Cli> {
-        self.handler.clone()
-    }
-
-    // ~~~
-
-    pub fn write(&self, msg: &str) -> Result<()> {
-        self.term().write(msg.to_string());
-        Ok(())
-    }
-
-    pub fn writeln(&self, msg: &str) -> Result<()> {
-        self.term().write(format!("{}\n\r",msg));
-        Ok(())
-    }
-
-
-}
-
-*/
-
-
-
 use async_trait::async_trait;
-//use workflow_log::log_trace;
-
 
 #[derive(Debug)]
 pub struct Inner {
@@ -171,60 +66,12 @@ impl Inner {
     }
 }
 
-
-// pub trait TerminalInterface : Sync + Send {
-//     fn write(&self, s: String) -> Result<()>;
-//     fn start(&self)-> Result<()>;
-//     fn digest(&self, cmd: String) -> Result<()>;
-//     fn register_handler(&self, hander: Arc<dyn Cli>)-> Result<()>;
-// }
-
 #[async_trait]
 pub trait Cli : Sync + Send {
     fn init(&self, _term : &Arc<Terminal>) -> Result<()> { Ok(()) }
     async fn digest(&self, term : &Arc<Terminal>, cmd: String) -> Result<()>;
     async fn complete(&self, term : &Arc<Terminal>, substring : String) -> Result<Vec<String>>;
 }
-
-// pub struct DefaultHandler{}
-
-// impl DefaultHandler{
-//     pub fn new()->Self{
-//         Self{}
-//     }
-// }
-
-// #[async_trait]
-// impl Cli for DefaultHandler{
-//     async fn digest(&self, _cmd:String)->Result<()>{
-//         Ok(())
-//     }
-
-//     async fn complete(&self, substring : String) -> Result<Vec<String>> {
-//         if substring.starts_with('a') {
-//             Ok(vec!["alpha".to_string(), "aloha".to_string(), "albatross".to_string()])
-//         } else {
-//             Ok(vec![])
-//         }
-//     }
-// }
-
-// pub struct ProcessResult{
-//     pub texts: Vec<String>,
-//     pub cmd: Option<String>
-// }
-
-// impl ProcessResult{
-//     fn empty()->Self{
-//         Self{texts:Vec::new(), cmd:None}
-//     }
-//     fn new(texts: Vec<String>)->Self{
-//         Self{texts, cmd:None}
-//     }
-//     fn new_with_cmd(texts: Vec<String>, cmd:String)->Self{
-//         Self{texts, cmd:Some(cmd)}
-//     }
-// }
 
 
 #[derive(Clone)]
@@ -241,7 +88,7 @@ impl Terminal {
 
     pub fn try_new(
         handler : Arc<dyn Cli>,
-        prompt : &str, //Arc<Mutex<String>>,
+        prompt : &str,
     ) -> Result<Self> {
 
         let term = Arc::new(Interface::try_new()?);
@@ -254,8 +101,6 @@ impl Terminal {
             handler,
             terminate : Arc::new(AtomicBool::new(false)),
         };
-
-        // intake.init()?;
 
         Ok(terminal)
     }
@@ -277,19 +122,10 @@ impl Terminal {
     }
 
     pub fn prompt(&self) {
-        /*
-        let mut data = self.inner()?;
-		self._prompt(&mut data)?;
-        */
         let mut data = self.inner().unwrap();
         data.cursor = 0;
 		data.buffer = Vec::new();
-
-        // log_trace!("prompt...");
-
-        // self.term().write(format!("\r\n{}", self.get_prompt()));
         self.term().write(format!("{}", self.get_prompt()));
-		// Ok(format!("\r\n{}", self.prompt_str()))
 	}
 
     pub fn write<S>(&self, s : S) where S : Into<String> {
@@ -335,31 +171,11 @@ impl Terminal {
     pub fn exit(&self) {
         self.terminate.store(true, Ordering::SeqCst);
     }
-    // pub fn write(&self, )
-
-
-
-    // fn inject(&self, term_key : String) -> Result<String> {
-    //     let mut data = self.inner()?;
-    //     let mut vec = data.buffer.clone();
-    //     let _removed:Vec<String> = vec.splice(data.cursor..(data.cursor+0), [term_key]).collect();
-    //     data.buffer = vec;
-    //     //log_trace!("inject: data.buffer: {:#?}", data.buffer);
-    //     //log_trace!("inject: removed: {:#?}", removed);
-    //     let texts = self.trail(data.cursor, &data.buffer, true, false, 1)?;
-
-    //     data.cursor = data.cursor+1;
-    //     Ok(texts)
-    // }
 
     fn inject(&self, data : &mut Inner, term_key : String) -> Result<()> {
-        // let mut data = self.inner()?;
         let mut vec = data.buffer.clone();
-        // log_trace!("inject: vec: {}", vec.join(""));
         let _removed:Vec<String> = vec.splice(data.cursor..(data.cursor+0), [term_key]).collect();
         data.buffer = vec;
-        //log_trace!("inject: data.buffer: {:#?}", data.buffer);
-        //log_trace!("inject: removed: {:#?}", removed);
         self.trail(data.cursor, &data.buffer, true, false, 1);
         data.cursor = data.cursor+1;
         Ok(())
@@ -367,18 +183,13 @@ impl Terminal {
 
 
     pub async fn ingest(self : &Arc<Terminal>, key : Key, _term_key : String) -> Result<()> {
-        // let running = self.running.load(Ordering::SeqCst);
-        let mut texts:Vec<String> = Vec::new();
-        // fn empty()->Result<ProcessResult>{
-        //     Ok(ProcessResult::empty())
-        // }
         match key {
             Key::Backspace => {
                 let mut data = self.inner()?;
                 if data.cursor == 0{
                     return Ok(());
                 }
-                texts.push("\x08".to_string());
+                self.write("\x08".to_string());
                 data.cursor = data.cursor - 1;
                 let mut vec = data.buffer.clone();
                 vec.splice(data.cursor..(data.cursor+1), []);
@@ -480,24 +291,13 @@ impl Terminal {
                 };
 
                 if let Some(cmd) = cmd {
-                    // texts.push("\r\n".to_string());
-                    // println!("starting digest...");
                     self.writeln("");
                     self.running.store(true, Ordering::SeqCst);
-                    // return Ok(ProcessResult::new_with_cmd(texts, cmd));
-                    // let result = 
                     self.digest(cmd).await.ok();
-        
                     self.running.store(false, Ordering::SeqCst);
-                    // println!("calling prompt...");
-                    // self.prompt();
-                    //#[cfg(not(target_arch="wasm32"))]
-                    //self.after_digest()?;
                 }else{
                     self.writeln("");
                     self.prompt();
-                    // texts.push(self.prompt()?);
-
                 }
             },
             Key::Alt(_c)=>{
@@ -518,31 +318,6 @@ impl Terminal {
         return Ok(());
     }
 
-    // pub fn after_digest(&self)-> Result<String> {
-    //     self.running.store(false, Ordering::SeqCst);
-    //     let text = self.prompt()?;
-    //     Ok(text)
-    // }
-
-    // fn trail(&self, cursor:usize, buffer:&Vec<String>, rewind: bool, erase_last : bool, offset : usize) ->Result<String>{
-	// 	let mut texts = Vec::new();
-    //     let mut tail = buffer[cursor..].join("");
-    //     if erase_last{
-    //         tail = tail+" ";
-    //     }
-	// 	texts.push(tail.clone());
-    //     if rewind{
-    //         let mut l = tail.len();
-    //         if offset > 0{
-    //             l = l-offset;
-    //         }
-    //         for _ in 0..l{
-    //             texts.push("\x08".to_string());//backspace
-    //         }
-    //     }
-    //     Ok(texts.join(""))
-	// }
-
     fn trail(&self, cursor:usize, buffer:&Vec<String>, rewind: bool, erase_last : bool, offset : usize) {
 		let mut tail = buffer[cursor..].join("");
         if erase_last{
@@ -555,23 +330,19 @@ impl Terminal {
                 l = l-offset;
             }
             for _ in 0..l{
-                self.write("\x08");//backspace
+                self.write("\x08"); // backspace
             }
         }
 	}
-
-
 
     pub fn is_running(&self)->bool{
         self.running.load(Ordering::SeqCst)
     }
 
     pub async fn digest(self : &Arc<Terminal>, cmd : String) -> Result<()> {
-        // println!("digest 123");q
         if let Err(err) = self.handler.digest(self, cmd).await {
             self.writeln(format!("\x1B[2K\r{}", err));
         }
-        // self.writeln("");
         if self.terminate.load(Ordering::SeqCst) {
             self.term().exit();
         } else {
@@ -582,7 +353,7 @@ impl Terminal {
 
 }
 
-
+/// Utility function to strip multiple whitespaces and return a Vec<String>
 pub fn parse(s : &str) -> Vec<String> {
     let regex = Regex::new(r"\s+").unwrap();
     let s = regex.replace_all(s, " ");
