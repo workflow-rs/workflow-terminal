@@ -9,6 +9,11 @@ use crate::keys::Key;
 use crate::Result;
 use std::sync::{Arc,Mutex};
 
+/// 
+/// # Termion
+/// 
+/// Wrapper around Termion interface - https://crates.io/crates/termion
+/// 
 pub struct Termion {
     terminal: Arc<Mutex<Option<Arc<Terminal>>>>,
     terminate : AtomicBool,

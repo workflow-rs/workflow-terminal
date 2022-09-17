@@ -145,6 +145,14 @@ impl Sink {
 unsafe impl Send for Xterm{}
 unsafe impl Sync for Xterm{}
 
+///
+/// # Xterm 
+/// 
+/// Wrapper around XtermJS - https://github.com/xtermjs/xterm.js
+/// 
+/// TODO enhance API to match https://github.com/xtermjs/xterm.js/blob/4.14.1/typings/xterm.d.ts
+/// 
+/// 
 pub struct Xterm {
     pub element: Element,
     xterm:Arc<Mutex<Option<XtermImpl>>>,
