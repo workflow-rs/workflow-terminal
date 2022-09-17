@@ -1,5 +1,5 @@
 use workflow_dom::inject::*;
-use web_sys::{ Element, EventTarget };
+use web_sys::Element;
 use workflow_dom::utils::*;
 use workflow_log::*;
 use crate::Result;
@@ -7,97 +7,15 @@ use crate::keys::Key;
 use crate::terminal::Terminal;
 use crate::terminal::Options;
 use wasm_bindgen::JsValue;
-use wasm_bindgen::prelude::wasm_bindgen;
 use std::fmt::Debug;
-use std::fmt::Formatter;
 use std::sync::{Mutex, Arc};
 use workflow_wasm::listener::Listener;
 use workflow_wasm::utils::*;
 use workflow_core::channel::{oneshot,unbounded,Sender,Receiver};
 use workflow_dom::utils::body;
 use wasm_bindgen::prelude::*;
-
-
-#[wasm_bindgen]
-extern "C" {
-
-    #[wasm_bindgen(js_namespace=["window", "FitAddon"], js_name="FitAddon")]
-    type FitAddon;
-
-    #[wasm_bindgen(constructor, js_class = "window.FitAddon.FitAddon", js_name="FitAddon")]
-    fn new() -> FitAddon;
-
-    #[wasm_bindgen(method, js_name="proposeDimensions")]
-    fn propose_dimensions(this: &FitAddon);
-
-    #[wasm_bindgen(method, js_name="fit")]
-    fn fit(this: &FitAddon);
-}
-
-#[wasm_bindgen]
-extern "C" {
-
-    #[wasm_bindgen(js_namespace=["window","WebLinksAddon"], js_name="WebLinksAddon")]
-    type WebLinksAddon;
-
-    #[wasm_bindgen(constructor, js_class = "window.WebLinksAddon.WebLinksAddon", js_name = "WebLinksAddon")]
-    fn new(callback : JsValue) -> WebLinksAddon;
-}
-
-#[wasm_bindgen]
-extern "C" {
-
-    #[wasm_bindgen(extends = js_sys::Object)]
-    type XtermEvent;
-
-    #[wasm_bindgen(method, getter, js_name="domEvent")]
-    fn get_dom_event(this: &XtermEvent) -> web_sys::KeyboardEvent;
-    #[wasm_bindgen(method, getter, js_name="key")]
-    fn get_key(this: &XtermEvent) -> String;
-
-    #[wasm_bindgen(js_namespace=window, js_name="Terminal")]
-    type XtermImpl;
-
-    #[wasm_bindgen(constructor, js_class = "Terminal")]
-    fn new(opt: js_sys::Object) -> XtermImpl;
-
-    #[wasm_bindgen(method, getter)]
-    fn number(this: &XtermImpl) -> u32;
-
-    #[wasm_bindgen(method)]
-    fn open(this: &XtermImpl, el: &Element);
-
-    #[wasm_bindgen(method, js_name="onKey")]
-    fn on_key(this: &XtermImpl, f: &js_sys::Function);
-
-    #[wasm_bindgen(method, js_name="write")]
-    fn _write(this: &XtermImpl, text:String);
-
-    // #[wasm_bindgen(method, js_name="paste")]
-    // fn _paste(this: &XtermImpl, text:String);
-
-    #[wasm_bindgen(method, js_name="loadAddon")]
-    fn load_addon(this: &XtermImpl, addon : JsValue);
-
-    #[wasm_bindgen(method, getter, js_name="element")]
-    fn get_element(this: &XtermImpl)->Element;
-}
-
-impl Debug for XtermImpl {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-        write!(f, "TODO::")?;
-        Ok(())
-    }
-}
-
-impl XtermImpl {
-    fn write<T:Into<String>>(&self, text:T){
-        self._write(text.into());
-    }
-    // fn paste<T:Into<String>>(&self, text:T){
-    //     self._paste(text.into());
-    // }
-}
+use super::bindings::*;
+// use crate::terminal::bindings::XtermImpl;
 
 enum Ctl {
     SinkEvent(SinkEvent),
@@ -161,7 +79,7 @@ pub struct Xterm {
     sink : Arc<Sink>,
     resize : Arc<Mutex<Option<(ResizeObserver,Listener<JsValue>)>>>,
     fit : Arc<Mutex<Option<FitAddon>>>,
-    web_links : Arc<Mutex<Option<WebLinksAddon>>>,
+    _web_links : Arc<Mutex<Option<WebLinksAddon>>>,
     clipboard_listerner:  Arc<Mutex<Option<Listener<web_sys::KeyboardEvent>>>>,
 }
 
@@ -189,7 +107,7 @@ impl Xterm{
             resize: Arc::new(Mutex::new(None)),
             // addons: Arc::new(Mutex::new(Vec::new())),
             fit : Arc::new(Mutex::new(None)),
-            web_links : Arc::new(Mutex::new(None)),
+            _web_links : Arc::new(Mutex::new(None)),
             clipboard_listerner: Arc::new(Mutex::new(None)),
         };
         Ok(terminal)
@@ -530,34 +448,5 @@ pub fn load_scripts_impl(load : Closure::<dyn FnMut(web_sys::CustomEvent)->std::
         }
     ")?;
     Ok(())
-}
-
-
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen (extends = :: js_sys :: Object , js_name = ResizeObserver , typescript_type = "ResizeObserver")]
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub type ResizeObserver;
-    #[wasm_bindgen(catch, constructor, js_class = "ResizeObserver")]
-    pub fn new(callback: &::js_sys::Function) -> std::result::Result<ResizeObserver, JsValue>;
-    #[wasm_bindgen (method , structural , js_class = "ResizeObserver" , js_name = disconnect)]
-    pub fn disconnect(this: &ResizeObserver);
-    #[wasm_bindgen (method , structural , js_class = "ResizeObserver" , js_name = observe)]
-    pub fn observe(this: &ResizeObserver, target: &Element);
-    // # [wasm_bindgen (method , structural , js_class = "ResizeObserver" , js_name = observe)]
-    // pub fn observe_with_options(
-    //     this: &ResizeObserver,
-    //     target: &Element,
-    //     options: &ResizeObserverOptions,
-    // );
-    // # [wasm_bindgen (method , structural , js_class = "ResizeObserver" , js_name = unobserve)]
-    pub fn unobserve(this: &ResizeObserver, target: &Element);
-}
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen (js_namespace=["navigator", "clipboard"], js_name="readText")]
-    async fn get_clipboard_data()-> JsValue;
 }
 

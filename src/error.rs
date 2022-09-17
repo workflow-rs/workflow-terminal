@@ -8,8 +8,8 @@ use thiserror::Error;
 pub enum Error {
     #[error("Error: {0}")]
     Str(String),
-    #[error("Error: {0:?}")]
-    JsValue(JsValue),
+    #[error("Error: {0}")]
+    JsValue(String),
     #[error("Poison Error: {0}")]
     PoisonError(String),
     #[error("Channel Receive Error")]
@@ -31,7 +31,7 @@ impl From<&str> for Error{
 
 impl From<JsValue> for Error{
     fn from(v:JsValue)->Self{
-        Self::JsValue(v)
+        Self::JsValue(format!("{:?}", v))
     }
 }
 
@@ -59,15 +59,22 @@ where T : std::fmt::Debug
 }
 
 
-impl From<Error> for JsValue{
-    fn from(err: Error) -> JsValue {
+impl From<Error> for String {
+    fn from(err: Error) -> String {
         match err {
             Error::Str(s) 
             | Error::PoisonError(s)
             | Error::SendError(s)
-                => JsValue::from(s),
-            Error::RecvError => JsValue::from_str(&format!("{}", err)),
-            Error::JsValue(v)=>v
+            | Error::JsValue(s)
+                => String::from(s),
+            Error::RecvError => String::from(&format!("{}", err)),
         }
+    }
+}
+
+impl From<Error> for JsValue{
+    fn from(err: Error) -> JsValue {
+        let s : String = err.into();
+        JsValue::from_str(&s)
     }
 }

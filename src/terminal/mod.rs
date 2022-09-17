@@ -3,13 +3,17 @@ use regex::Regex;
 //use workflow_log::log_trace;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, MutexGuard, LockResult, atomic::AtomicBool};
+use workflow_core::channel::{unbounded,Sender,Receiver};
 use crate::result::Result;
+use crate::result::CliResult;
 use crate::keys::Key;
 use crate::cursor::*;
+use workflow_log::*;
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         mod xterm;
+        mod bindings;
         pub use xterm::Xterm as Interface;
 
 
@@ -65,15 +69,107 @@ impl Inner {
             history_index:0,
         }
     }
+
+    pub fn reset_line_buffer(&mut self) {
+        self.buffer.clear();
+        self.cursor = 0;
+    }
 }
 
 #[async_trait]
-pub trait Cli : Sync + Send {
+// pub trait Cli : Sync + Send {
+pub trait Cli {
     fn init(&self, _term : &Arc<Terminal>) -> Result<()> { Ok(()) }
-    async fn digest(&self, term : &Arc<Terminal>, cmd: String) -> Result<()>;
-    async fn complete(&self, term : &Arc<Terminal>, cmd : String) -> Result<Vec<String>>;
+    async fn digest(&self, term : Arc<Terminal>, cmd: String) -> CliResult<()>;
+    async fn complete(&self, term : Arc<Terminal>, cmd : String) -> CliResult<Vec<String>>;
 }
 
+// unsafe impl Send for UserInput { }
+// unsafe impl Sync for UserInput { }
+
+#[derive(Clone)]
+pub struct UserInput {
+    buffer : Arc<Mutex<String>>,
+    enabled : Arc<AtomicBool>,
+    secure :  Arc<AtomicBool>,
+    sender : Sender<String>,
+    receiver : Receiver<String>,
+}
+
+impl UserInput {
+    pub fn new() -> Self {
+        let (sender, receiver) = unbounded();
+        UserInput {
+            buffer: Arc::new(Mutex::new(String::new())),
+            enabled: Arc::new(AtomicBool::new(false)),
+            secure:  Arc::new(AtomicBool::new(false)),
+            sender,
+            receiver,
+        }
+    }
+
+    pub fn open(&self, secure : bool) -> Result<()> {
+        self.enabled.store(true, Ordering::SeqCst);
+        self.secure.store(secure, Ordering::SeqCst);
+        Ok(())
+    }
+
+    pub fn close(&self) -> Result<()> {
+        let s = {
+            let mut buffer = self.buffer.lock().unwrap();
+            let s = buffer.clone();
+            buffer.clear();
+            s
+        };
+
+        self.enabled.store(false, Ordering::SeqCst);
+        self.sender.try_send(s).unwrap();
+        Ok(())
+    }
+
+    pub async fn capture(&self, secure: bool) -> Result<String> {
+        log_trace!("capturing...");
+        self.open(secure)?;
+        log_trace!("receiving...");
+        let string = self.receiver.recv().await?;
+        log_trace!("received!...");
+        Ok(string)
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.enabled.load(Ordering::SeqCst)
+    }
+
+    fn is_secure(&self) -> bool {
+        self.secure.load(Ordering::SeqCst)
+    }
+
+    fn inject(&self, key : Key) -> Result<()> {
+        match key {
+            Key::Char(ch)=>{
+                log_trace!("char...");
+
+                self.buffer.lock().unwrap().push(ch);
+            },
+            Key::Backspace => {
+                log_trace!("backspace...");
+
+                self.buffer.lock().unwrap().pop();
+            }
+            Key::Enter => {
+                log_trace!("closing...");
+                self.close()?;
+            }
+            _ => { }
+        }
+        Ok(())
+    }
+    
+}
+
+
+unsafe impl Send for Terminal { }
+unsafe impl Sync for Terminal { }
 
 #[derive(Clone)]
 pub struct Terminal {
@@ -83,6 +179,7 @@ pub struct Terminal {
     pub term : Arc<Interface>,
     pub handler : Arc<dyn Cli>,
     pub terminate : Arc<AtomicBool>,
+    user_input : UserInput,
 }
 
 impl Terminal {
@@ -101,6 +198,7 @@ impl Terminal {
             term,
             handler,
             terminate : Arc::new(AtomicBool::new(false)),
+            user_input : UserInput::new(),
         };
 
         Ok(terminal)
@@ -114,6 +212,10 @@ impl Terminal {
 
     pub fn inner(&self) -> LockResult<MutexGuard<'_, Inner>> {
         self.inner.lock()
+    }
+
+    pub fn reset_line_buffer(&self) {
+        self.inner().unwrap().reset_line_buffer();
     }
 
     pub fn get_prompt(&self) -> String {
@@ -156,8 +258,6 @@ impl Terminal {
         Ok(())
 	}
 
-
-
     pub fn term(&self) -> Arc<Interface> {
         return Arc::clone(&self.term);
     }
@@ -169,6 +269,12 @@ impl Terminal {
 
     pub fn exit(&self) {
         self.terminate.store(true, Ordering::SeqCst);
+    }
+
+    pub async fn ask(&self, secure: bool, prompt : &str) -> Result<String> {
+        self.reset_line_buffer();
+        self.term().write(prompt.to_string());
+        Ok(self.user_input.capture(secure).await?)
     }
 
     pub fn inject(&self, text : String) -> Result<()> {
@@ -192,6 +298,12 @@ impl Terminal {
 
 
     pub async fn ingest(self : &Arc<Terminal>, key : Key, _term_key : String) -> Result<()> {
+
+        if self.user_input.is_enabled() {
+            self.user_input.inject(key)?;
+            return Ok(())
+        }
+
         match key {
             Key::Backspace => {
                 let mut data = self.inner()?;
@@ -258,9 +370,6 @@ impl Terminal {
                     self.write(Right(1).to_string());
                 }
             }
-            // "Inject"=>{
-            //     inject(term_key);
-            // }
             Key::Enter => {
                 //log_trace!("Key::Enter:cli");
                 let cmd = {
@@ -302,8 +411,13 @@ impl Terminal {
                 if let Some(cmd) = cmd {
                     self.writeln("");
                     self.running.store(true, Ordering::SeqCst);
-                    self.digest(cmd).await.ok();
-                    self.running.store(false, Ordering::SeqCst);
+
+                    let this = self.clone();
+                    workflow_core::task::spawn(async move {
+                            this.digest(cmd).await.ok();
+                            this.running.store(false, Ordering::SeqCst);
+                    });
+
                 }else{
                     self.writeln("");
                     self.prompt();
@@ -349,7 +463,7 @@ impl Terminal {
     }
 
     pub async fn digest(self : &Arc<Terminal>, cmd : String) -> Result<()> {
-        if let Err(err) = self.handler.digest(self, cmd).await {
+        if let Err(err) = self.handler.digest(self.clone(), cmd).await {
             self.writeln(format!("\x1B[2K\r{}", err));
         }
         if self.terminate.load(Ordering::SeqCst) {
