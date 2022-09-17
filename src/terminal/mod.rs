@@ -9,6 +9,8 @@ use crate::result::CliResult;
 use crate::keys::Key;
 use crate::cursor::*;
 use workflow_log::*;
+use async_trait::async_trait;
+
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
@@ -50,7 +52,6 @@ impl Options{
     }
 }
 
-use async_trait::async_trait;
 
 #[derive(Debug)]
 pub struct Inner {
