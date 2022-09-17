@@ -1,7 +1,7 @@
 use termion::event::Key as K;
 use termion::input::TermRead;
-use termion::raw::IntoRawMode;
-use std::io::{Write, stdout, stdin};
+use termion::raw::{IntoRawMode, RawTerminal};
+use std::io::{Write, stdout, stdin, Stdout};
 use std::sync::atomic::{AtomicBool, Ordering};
 use crate::terminal::Terminal;
 use crate::terminal::Options;
@@ -16,7 +16,8 @@ use std::sync::{Arc,Mutex};
 /// 
 pub struct Termion {
     terminal: Arc<Mutex<Option<Arc<Terminal>>>>,
-    terminate : AtomicBool,
+    terminate : Arc<AtomicBool>,
+    stdout : Arc<Mutex<Option<RawTerminal<Stdout>>>>
 }
 
 impl Termion {
@@ -26,7 +27,8 @@ impl Termion {
     pub fn try_new_with_options(_options:Options) -> Result<Self> {
         let termion = Termion {
             terminal: Arc::new(Mutex::new(None)),
-            terminate : AtomicBool::new(false),
+            terminate : Arc::new(AtomicBool::new(false)),
+            stdout : Arc::new(Mutex::new(Some(stdout().into_raw_mode().unwrap()))),
         };
         Ok(termion)
     }
@@ -40,26 +42,25 @@ impl Termion {
         self.terminate.store(true, Ordering::SeqCst);
     }
 
+    pub fn terminal(&self) -> Arc<Terminal> {
+        self.terminal.lock().unwrap().as_ref().unwrap().clone()
+    }
+
     pub async fn run(&self)->Result<()> {
+        self.flush();
+        self.intake(&self.terminate).await?;
+        self.flush();
+        self.stdout.lock().unwrap().as_ref().unwrap().suspend_raw_mode().unwrap();
+        *self.stdout.lock().unwrap() = None;
+        Ok(())
+    }
+
+    pub async fn intake(&self, terminate : &Arc<AtomicBool>)->Result<()> {
+
         let stdin = stdin();
-        let mut stdout = stdout().into_raw_mode().unwrap();
-        stdout.flush().unwrap();
-
         for c in stdin.keys() {
-            
-            /*
-            write!(stdout,
-                    "{}",
-                    termion::clear::CurrentLine)
-                    .unwrap();
-            */
-            
-
-            //log_trace!("e:{:?}", c);
-            let key = 
-            match c.unwrap() {
-                // keeping this for now (testing)
-                K::Char('q') => break,
+            let key = match c.unwrap() {
+                // K::Char('q') => break,
                 K::Char(c) => {
                     if c == '\n' || c == '\r'{
                         Key::Enter
@@ -80,16 +81,10 @@ impl Termion {
                 }
             };
 
-            let _result = self.terminal
-                .lock()
-                .unwrap()
-                .as_ref()
-                .unwrap()
-                .ingest(key, "".to_string()).await;
-        
-            stdout.flush().unwrap();
+            self.terminal().ingest(key,"".to_string()).await?;
+            self.flush();
 
-            if self.terminate.load(Ordering::SeqCst) {
+            if terminate.load(Ordering::SeqCst) {
                 break;
             }
         }
@@ -99,7 +94,13 @@ impl Termion {
 
     pub fn write<S>(&self, s:S) where S:Into<String>{
         print!("{}", s.into());
-            // stdout.flush().unwrap();
+        self.flush();
+    }
+
+    pub fn flush(&self) {
+        if let Some(stdout) = self.stdout.lock().unwrap().as_mut() {
+            stdout.flush().unwrap();
+        }
     }
     
 }

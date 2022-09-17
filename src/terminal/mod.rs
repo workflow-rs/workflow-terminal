@@ -8,7 +8,6 @@ use crate::result::Result;
 use crate::result::CliResult;
 use crate::keys::Key;
 use crate::cursor::*;
-use workflow_log::*;
 use async_trait::async_trait;
 
 
@@ -16,12 +15,12 @@ cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         mod xterm;
         mod bindings;
-        pub use xterm::Xterm as Interface;
+        pub use crate::terminal::xterm::Xterm as Interface;
 
 
     } else {
-        mod native;
-        pub use native::Termion as Interface;
+        mod termion;
+        pub use crate::terminal::termion::Termion as Interface;
     }
 }
 
@@ -78,21 +77,19 @@ impl Inner {
 }
 
 #[async_trait]
-// pub trait Cli : Sync + Send {
-pub trait Cli {
+pub trait Cli : Sync + Send {
+// pub trait Cli {
     fn init(&self, _term : &Arc<Terminal>) -> Result<()> { Ok(()) }
     async fn digest(&self, term : Arc<Terminal>, cmd: String) -> CliResult<()>;
     async fn complete(&self, term : Arc<Terminal>, cmd : String) -> CliResult<Vec<String>>;
 }
-
-// unsafe impl Send for UserInput { }
-// unsafe impl Sync for UserInput { }
 
 #[derive(Clone)]
 pub struct UserInput {
     buffer : Arc<Mutex<String>>,
     enabled : Arc<AtomicBool>,
     secure :  Arc<AtomicBool>,
+    terminate :  Arc<AtomicBool>,
     sender : Sender<String>,
     receiver : Receiver<String>,
 }
@@ -104,6 +101,7 @@ impl UserInput {
             buffer: Arc::new(Mutex::new(String::new())),
             enabled: Arc::new(AtomicBool::new(false)),
             secure:  Arc::new(AtomicBool::new(false)),
+            terminate: Arc::new(AtomicBool::new(false)),
             sender,
             receiver,
         }
@@ -112,6 +110,7 @@ impl UserInput {
     pub fn open(&self, secure : bool) -> Result<()> {
         self.enabled.store(true, Ordering::SeqCst);
         self.secure.store(secure, Ordering::SeqCst);
+        self.terminate.store(false, Ordering::SeqCst);
         Ok(())
     }
 
@@ -124,16 +123,22 @@ impl UserInput {
         };
 
         self.enabled.store(false, Ordering::SeqCst);
+        self.terminate.store(true, Ordering::SeqCst);
         self.sender.try_send(s).unwrap();
         Ok(())
     }
 
-    pub async fn capture(&self, secure: bool) -> Result<String> {
-        log_trace!("capturing...");
+    pub async fn capture(&self, secure: bool, term : &Arc<Terminal>) -> Result<String> {
         self.open(secure)?;
-        log_trace!("receiving...");
+
+        let term = term.clone();
+        let terminate = self.terminate.clone();
+
+        workflow_core::task::spawn(async move {
+            let _result = term.term().intake(&terminate).await;
+        });
+
         let string = self.receiver.recv().await?;
-        log_trace!("received!...");
         Ok(string)
     }
 
@@ -145,20 +150,22 @@ impl UserInput {
         self.secure.load(Ordering::SeqCst)
     }
 
-    fn inject(&self, key : Key) -> Result<()> {
+    fn inject(&self, key : Key, term: &Arc<Terminal>) -> Result<()> {
         match key {
             Key::Char(ch)=>{
-                log_trace!("char...");
-
                 self.buffer.lock().unwrap().push(ch);
+                if !self.is_secure() {
+                    term.write(ch);
+                }
             },
             Key::Backspace => {
-                log_trace!("backspace...");
-
                 self.buffer.lock().unwrap().pop();
+                if !self.is_secure() {
+                    term.write("\x08 \x08");
+                }
             }
             Key::Enter => {
-                log_trace!("closing...");
+                term.writeln("");
                 self.close()?;
             }
             _ => { }
@@ -168,9 +175,6 @@ impl UserInput {
     
 }
 
-
-unsafe impl Send for Terminal { }
-unsafe impl Sync for Terminal { }
 
 #[derive(Clone)]
 pub struct Terminal {
@@ -272,10 +276,10 @@ impl Terminal {
         self.terminate.store(true, Ordering::SeqCst);
     }
 
-    pub async fn ask(&self, secure: bool, prompt : &str) -> Result<String> {
+    pub async fn ask(self : &Arc<Terminal>, secure: bool, prompt : &str) -> Result<String> {
         self.reset_line_buffer();
         self.term().write(prompt.to_string());
-        Ok(self.user_input.capture(secure).await?)
+        Ok(self.user_input.capture(secure, self).await?)
     }
 
     pub fn inject(&self, text : String) -> Result<()> {
@@ -287,21 +291,17 @@ impl Terminal {
     fn inject_impl(&self, data : &mut Inner, text : String) -> Result<()> {
         let len = text.len();
         let mut vec = data.buffer.clone();
-        //log_trace!("before: vec.len(): {}", vec.len());
-        let _removed:Vec<String> = vec.splice(data.cursor..(data.cursor+0), text.chars().map(|a|a.to_string())).collect();
-        //let len_new = vec.len();
+        let _removed: Vec<String> = vec.splice(data.cursor..(data.cursor+0), text.chars().map(|a|a.to_string())).collect();
         data.buffer = vec;
-        //log_trace!("after: vec.len(): {}, data.cursor:{}, buffer:{}, buffer.len():{}", len_new,  data.cursor+len, data.buffer.join(""), data.buffer.len());
         self.trail(data.cursor, &data.buffer, true, false, len);
         data.cursor = data.cursor+len;
         Ok(())
     }
 
-
     pub async fn ingest(self : &Arc<Terminal>, key : Key, _term_key : String) -> Result<()> {
 
         if self.user_input.is_enabled() {
-            self.user_input.inject(key)?;
+            self.user_input.inject(key, self)?;
             return Ok(())
         }
 
@@ -372,15 +372,10 @@ impl Terminal {
                 }
             }
             Key::Enter => {
-                //log_trace!("Key::Enter:cli");
                 let cmd = {
                     let mut data = self.inner()?;
-                    //e.stopPropagation();
-                    //let { buffer, history } = this;
-                    //let { length } = history;
                     let buffer = data.buffer.clone();
                     let length = data.history.len();
-
                     
                     data.buffer = Vec::new();
                     data.cursor = 0;
@@ -394,15 +389,13 @@ impl Terminal {
                             data.history_index = length-1;
                         }
                         let index = data.history_index;
-                        //log_trace!("length:{length},  history_index:{index}");
-                        if length<=index {
+                        if length <= index {
                             data.history.push(buffer);
                         }else{
                             data.history[index] = buffer;
                         }
                         data.history_index = data.history_index+1;
 
-                        //log_trace!("length222:{length},  history_index:{}, {}", data.history_index, cmd);
                         Some(cmd)
                     } else {
                         None
@@ -414,10 +407,8 @@ impl Terminal {
                     self.running.store(true, Ordering::SeqCst);
 
                     let this = self.clone();
-                    workflow_core::task::spawn(async move {
-                            this.digest(cmd).await.ok();
-                            this.running.store(false, Ordering::SeqCst);
-                    });
+                    this.digest(cmd).await.ok();
+                    this.running.store(false, Ordering::SeqCst);
 
                 }else{
                     self.writeln("");
@@ -431,7 +422,6 @@ impl Terminal {
                 return Ok(());
             },
             Key::Char(ch)=>{
-                // let mut data = self.inner()?;
                 self.inject(ch.to_string())?;
             },
             _ => {

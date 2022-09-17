@@ -40,12 +40,15 @@ extern "C" {
     pub fn get_dom_event(this: &XtermEvent) -> web_sys::KeyboardEvent;
     #[wasm_bindgen(method, getter, js_name="key")]
     pub fn get_key(this: &XtermEvent) -> String;
-
+    
     #[wasm_bindgen(js_namespace=window, js_name="Terminal")]
     pub type XtermImpl;
-
+    
     #[wasm_bindgen(constructor, js_class = "Terminal")]
     pub fn new(opt: js_sys::Object) -> XtermImpl;
+    
+    #[wasm_bindgen(method)]
+    pub fn focus(this: &XtermImpl);
 
     #[wasm_bindgen(method, getter)]
     pub fn number(this: &XtermImpl) -> u32;
