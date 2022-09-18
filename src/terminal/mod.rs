@@ -151,6 +151,10 @@ impl UserInput {
 
     fn inject(&self, key : Key, term: &Arc<Terminal>) -> Result<()> {
         match key {
+            Key::Ctrl('c') => {
+                self.close()?;
+                term.exit();
+            },
             Key::Char(ch)=>{
                 self.buffer.lock().unwrap().push(ch);
                 if !self.is_secure() {
@@ -277,6 +281,7 @@ impl Terminal {
 
     pub fn exit(&self) {
         self.terminate.store(true, Ordering::SeqCst);
+        self.term.exit();
     }
 
     pub async fn ask(self : &Arc<Terminal>, secure: bool, prompt : &str) -> Result<String> {
@@ -418,6 +423,14 @@ impl Terminal {
             Key::Alt(_c)=>{
                 return Ok(());
             },
+            Key::Ctrl('c')=>{
+                cfg_if! {
+                    if #[cfg(not(target_arch = "wasm32"))] {
+                        self.exit();
+                    }
+                }
+                return Ok(());
+            }
             Key::Ctrl(_c)=>{
                 return Ok(());
             },
