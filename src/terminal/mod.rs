@@ -54,8 +54,8 @@ impl Options{
 
 #[derive(Debug)]
 pub struct Inner {
-    pub buffer:Vec<String>,
-    history:Vec<Vec<String>>,
+    pub buffer:String,
+    history:Vec<String>,
     pub cursor:usize,
     history_index:usize,
 }
@@ -63,7 +63,7 @@ pub struct Inner {
 impl Inner {
     pub fn new() -> Self {
         Inner {
-            buffer:Vec::new(),
+            buffer:String::new(),
             history:Vec::new(),
             cursor:0,
             history_index:0,
@@ -78,7 +78,6 @@ impl Inner {
 
 #[async_trait]
 pub trait Cli : Sync + Send {
-// pub trait Cli {
     fn init(&self, _term : &Arc<Terminal>) -> Result<()> { Ok(()) }
     async fn digest(&self, term : Arc<Terminal>, cmd: String) -> CliResult<()>;
     async fn complete(&self, term : Arc<Terminal>, cmd : String) -> CliResult<Vec<String>>;
@@ -230,7 +229,7 @@ impl Terminal {
     pub fn prompt(&self) {
         let mut data = self.inner().unwrap();
         data.cursor = 0;
-		data.buffer = Vec::new();
+		data.buffer.clear();
         self.term().write(format!("{}", self.get_prompt()));
 	}
 
@@ -242,26 +241,25 @@ impl Terminal {
         self.write(format!("{}\n\x1B[2K\r", s.into()));
     }
 
-    pub fn todo_writeln<S>(&self, s : S) -> Result<()> where S : Into<String> {
+    // pub fn todo_writeln<S>(&self, s : S) -> Result<()> where S : Into<String> {
         
-        let str : String = s.into() + "\r\n";
-        // str.push("\r\n".to_string());
+    //     let str : String = s.into() + "\r\n";
         
-		if self.is_running() {
-            self.write(str);
-		}else {
-            self.write(format!("\x1B[2K\r{}", str));
-            let data = self.inner()?;
-			let p = format!("{}{}", self.get_prompt(), data.buffer.join(""));
-			self.write(p);            
-			let l = data.buffer.len() - data.cursor;
-			for _ in 0..l{
-				self.write("\x08".to_string());
-            }
-		}
+	// 	if self.is_running() {
+    //         self.write(str);
+	// 	}else {
+    //         self.write(format!("\x1B[2K\r{}", str));
+    //         let data = self.inner()?;
+	// 		let p = format!("{}{}", self.get_prompt(), data.buffer);
+	// 		self.write(p);            
+	// 		let l = data.buffer.len() - data.cursor;
+	// 		for _ in 0..l{
+	// 			self.write("\x08".to_string());
+    //         }
+	// 	}
 
-        Ok(())
-	}
+    //     Ok(())
+	// }
 
     pub fn term(&self) -> Arc<Interface> {
         return Arc::clone(&self.term);
@@ -290,9 +288,7 @@ impl Terminal {
 
     fn inject_impl(&self, data : &mut Inner, text : String) -> Result<()> {
         let len = text.len();
-        let mut vec = data.buffer.clone();
-        let _removed: Vec<String> = vec.splice(data.cursor..(data.cursor+0), text.chars().map(|a|a.to_string())).collect();
-        data.buffer = vec;
+        data.buffer.insert_str(data.cursor, &text);
         self.trail(data.cursor, &data.buffer, true, false, len);
         data.cursor = data.cursor+len;
         Ok(())
@@ -313,9 +309,8 @@ impl Terminal {
                 }
                 self.write("\x08".to_string());
                 data.cursor = data.cursor - 1;
-                let mut vec = data.buffer.clone();
-                vec.splice(data.cursor..(data.cursor+1), []);
-                data.buffer = vec;
+                let idx = data.cursor;
+                data.buffer.remove(idx);
                 self.trail(data.cursor, &data.buffer, true, true, 0);
             },
             Key::ArrowUp =>{
@@ -334,7 +329,7 @@ impl Terminal {
                 data.history_index = data.history_index-1;
                 
                 data.buffer = data.history[data.history_index].clone();
-                self.write(format!("\x1B[2K\r{}{}", self.get_prompt(), data.buffer.join("")));
+                self.write(format!("\x1B[2K\r{}{}", self.get_prompt(), data.buffer));
                 data.cursor = data.buffer.len();
                 
             }
@@ -348,12 +343,12 @@ impl Terminal {
                 data.history[index] = data.buffer.clone();
                 data.history_index = data.history_index+1;
                 if data.history_index == len{
-                    data.buffer = Vec::new();
+                    data.buffer.clear();
                 }else{
                     data.buffer = data.history[data.history_index].clone();
                 }
                 
-                self.write(format!("\x1B[2K\r{}{}", self.get_prompt(), data.buffer.join("")));
+                self.write(format!("\x1B[2K\r{}{}", self.get_prompt(), data.buffer));
                 data.cursor = data.buffer.len();
             }
             Key::ArrowLeft =>{
@@ -377,12 +372,12 @@ impl Terminal {
                     let buffer = data.buffer.clone();
                     let length = data.history.len();
                     
-                    data.buffer = Vec::new();
+                    data.buffer.clear();
                     data.cursor = 0;
 
                     if buffer.len() > 0 {
                         
-                        let cmd = buffer.join("");
+                        let cmd = buffer.clone();
                         if length==0 || data.history[length-1].len() > 0{
                             data.history_index = length;
                         }else{
@@ -432,8 +427,8 @@ impl Terminal {
         return Ok(());
     }
 
-    fn trail(&self, cursor:usize, buffer:&Vec<String>, rewind: bool, erase_last : bool, offset : usize) {
-		let mut tail = buffer[cursor..].join("");
+    fn trail(&self, cursor:usize, buffer:&String, rewind: bool, erase_last : bool, offset : usize) {
+		let mut tail = buffer[cursor..].to_string();
         if erase_last{
             tail = tail+" ";
         }
