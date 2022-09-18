@@ -1,6 +1,7 @@
+// Cursor helper structs (from https://crates.io/crates/termion)
+
 use std::fmt;
 use numtoa::NumToA;
-
 
 /// Move cursor left.
 #[derive(Copy, Clone, PartialEq, Eq)]

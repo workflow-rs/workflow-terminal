@@ -1,14 +1,13 @@
 use cfg_if::cfg_if;
 use regex::Regex;
-//use workflow_log::log_trace;
-use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex, MutexGuard, LockResult, atomic::AtomicBool};
+use std::sync::atomic::{ AtomicBool, Ordering };
+use std::sync::{Arc, Mutex, MutexGuard, LockResult};
 use workflow_core::channel::{unbounded,Sender,Receiver};
 use crate::result::Result;
-use crate::result::CliResult;
+use crate::cli::Cli;
 use crate::keys::Key;
 use crate::cursor::*;
-use async_trait::async_trait;
+use crate::clear::*;
 
 
 cfg_if! {
@@ -74,13 +73,6 @@ impl Inner {
         self.buffer.clear();
         self.cursor = 0;
     }
-}
-
-#[async_trait]
-pub trait Cli : Sync + Send {
-    fn init(&self, _term : &Arc<Terminal>) -> Result<()> { Ok(()) }
-    async fn digest(&self, term : Arc<Terminal>, cmd: String) -> CliResult<()>;
-    async fn complete(&self, term : Arc<Terminal>, cmd : String) -> CliResult<Vec<String>>;
 }
 
 #[derive(Clone)]
@@ -168,7 +160,8 @@ impl UserInput {
                 }
             }
             Key::Enter => {
-                term.writeln("");
+                // term.writeln("");
+                term.crlf();
                 self.close()?;
             }
             _ => { }
@@ -242,40 +235,35 @@ impl Terminal {
         self.term().write(format!("{}", self.get_prompt()));
 	}
 
+    pub fn crlf(&self) {
+        self.term().write("\n\r".to_string());
+    }
+
     pub fn write<S>(&self, s : S) where S : Into<String> {
         self.term().write(s.into());
     }
 
     pub fn writeln<S>(&self, s : S) where S : Into<String> {
-        self.write(format!("{}\n\x1B[2K\r", s.into()));
+		if self.is_running() {
+            self.write(format!("{}\n\r", s.into()));
+        } else {
+            self.write(format!("{}{}\n\r",ClearLine, s.into()));
+            let data = self.inner().unwrap();
+			let p = format!("{}{}", self.get_prompt(), data.buffer);
+			self.write(p);            
+			let l = data.buffer.len() - data.cursor;
+			for _ in 0..l{
+				self.write("\x08".to_string());
+            }
+        }
     }
-
-    // pub fn todo_writeln<S>(&self, s : S) -> Result<()> where S : Into<String> {
-        
-    //     let str : String = s.into() + "\r\n";
-        
-	// 	if self.is_running() {
-    //         self.write(str);
-	// 	}else {
-    //         self.write(format!("\x1B[2K\r{}", str));
-    //         let data = self.inner()?;
-	// 		let p = format!("{}{}", self.get_prompt(), data.buffer);
-	// 		self.write(p);            
-	// 		let l = data.buffer.len() - data.cursor;
-	// 		for _ in 0..l{
-	// 			self.write("\x08".to_string());
-    //         }
-	// 	}
-
-    //     Ok(())
-	// }
 
     pub fn term(&self) -> Arc<Interface> {
         return Arc::clone(&self.term);
     }
 
     pub async fn run(&self) -> Result<()> {
-        self.prompt();
+        // self.prompt();
         Ok(self.term().run().await?)
     }
 
@@ -339,7 +327,7 @@ impl Terminal {
                 data.history_index = data.history_index-1;
                 
                 data.buffer = data.history[data.history_index].clone();
-                self.write(format!("\x1B[2K\r{}{}", self.get_prompt(), data.buffer));
+                self.write(format!("{}{}{}", ClearLine, self.get_prompt(), data.buffer));
                 data.cursor = data.buffer.len();
                 
             }
@@ -358,7 +346,7 @@ impl Terminal {
                     data.buffer = data.history[data.history_index].clone();
                 }
                 
-                self.write(format!("\x1B[2K\r{}{}", self.get_prompt(), data.buffer));
+                self.write(format!("{}{}{}", ClearLine, self.get_prompt(), data.buffer));
                 data.cursor = data.buffer.len();
             }
             Key::ArrowLeft =>{
@@ -373,7 +361,7 @@ impl Terminal {
                 let mut data = self.inner()?;
                 if data.cursor < data.buffer.len() {
                     data.cursor = data.cursor+1;
-                    self.write(Right(1).to_string());
+                    self.write(Right(1));
                 }
             }
             Key::Enter => {
@@ -388,6 +376,7 @@ impl Terminal {
                     if buffer.len() > 0 {
                         
                         let cmd = buffer.clone();
+
                         if length==0 || data.history[length-1].len() > 0{
                             data.history_index = length;
                         }else{
@@ -406,19 +395,17 @@ impl Terminal {
                         None
                     }
                 };
+                
+                self.crlf();
 
                 if let Some(cmd) = cmd {
-                    self.writeln("");
                     self.running.store(true, Ordering::SeqCst);
-
-                    let this = self.clone();
-                    this.digest(cmd).await.ok();
-                    this.running.store(false, Ordering::SeqCst);
-
-                }else{
-                    self.writeln("");
+                    self.digest(cmd).await.ok();
+                    self.running.store(false, Ordering::SeqCst);
+                } else {
                     self.prompt();
                 }
+
             },
             Key::Alt(_c)=>{
                 return Ok(());
@@ -468,7 +455,7 @@ impl Terminal {
 
     pub async fn digest(self : &Arc<Terminal>, cmd : String) -> Result<()> {
         if let Err(err) = self.handler.digest(self.clone(), cmd).await {
-            self.writeln(format!("\x1B[2K\r{}", err));
+            self.writeln(err);
         }
         if self.terminate.load(Ordering::SeqCst) {
             self.term().exit();
