@@ -1,1 +1,30 @@
 # workflow-terminal
+
+*Workflow Terminal* is a part of the [WORKFLOW-RS](http://github.com/workflow-rs) framework designed for platform-independent, browser-compatible
+**async Rust** application development.
+
+---
+
+Workflow Terminal allows you to create a terminal interface that operates symmetrically in OS shell (console)
+as well as in the web browser.  This crate is useful if you want to create a command-line interface for an
+application meant to run natively on bare metal and in the browser. This crate is especially useful for prototyping
+and testing wasm32 browser-compatible platform-neutral applications and crates.
+
+This functionality is achieved by creating a terminal struct `Terminal` that simultaneously wraps:
+* Termion (for Native) - https://crates.io/crates/termion
+* XtermJS (for Browser) - https://github.com/xtermjs/xterm.js
+
+This crate only depends on a minimal set of other crates and has no external (JavaScript) dependencies.
+XtermJS es6 modules are injected directly into DOM during the Terminal initialization phase. This allows the terminal to be loaded using any http server without any additional configuration. (due to browser restrictions, WASM can not be loaded into a static page)
+
+On the backend, you have a simple `Cli` trait which receives user-entered command line.
+
+The Terminal interface also provides basic facilities such as prompt for user text and passwrod entry,
+access to command history and binding to logging facilities (in case you want to output to the termina
+outside of the terminal command callback).
+
+Please note: this implementation is based on async Rust and is currently hard-wired to run on top of 
+tokio in the console and uses wasm_bindgen and web-sys to interface with the browser environment.
+
+Basic examples on using this crate can be found at: 
+https://github.com/workflow-rs/workflow-terminal-examples
