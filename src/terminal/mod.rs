@@ -218,6 +218,11 @@ impl Terminal {
         self.inner.lock()
     }
 
+    pub fn history(&self) -> Vec<String> {
+        let data = self.inner().unwrap();
+        data.history.clone()
+    }
+
     pub fn reset_line_buffer(&self) {
         self.inner().unwrap().reset_line_buffer();
     }
