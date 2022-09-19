@@ -7,7 +7,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Error: {0}")]
-    Str(String),
+    String(String),
     #[error("Error: {0}")]
     JsValue(String),
     #[error("Poison Error: {0}")]
@@ -20,12 +20,12 @@ pub enum Error {
 
 impl From<String> for Error{
     fn from(v:String)->Self{
-        Self::Str(v)
+        Self::String(v)
     }
 }
 impl From<&str> for Error{
     fn from(v:&str)->Self{
-        Self::Str(v.to_string())
+        Self::String(v.to_string())
     }
 }
 
@@ -62,7 +62,7 @@ where T : std::fmt::Debug
 impl From<Error> for String {
     fn from(err: Error) -> String {
         match err {
-            Error::Str(s) 
+            Error::String(s) 
             | Error::PoisonError(s)
             | Error::SendError(s)
             | Error::JsValue(s)
