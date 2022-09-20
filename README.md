@@ -1,9 +1,14 @@
-# workflow-terminal
+# WORKFLOW-TERMINAL
 
-*Workflow Terminal* is a part of the [WORKFLOW-RS](http://github.com/workflow-rs) framework designed for platform-independent, browser-compatible
-**async Rust** application development.
+Part of the [WORKFLOW-RS](https://github.com/workflow-rs) application framework.
 
----
+***
+
+Terminal and command line interface (a custom shell) that runs in the browser and in the native environment.
+
+Platforms supported: Native, WASM (browser)
+
+# Overview:
 
 Workflow Terminal allows you to create a terminal interface that operates symmetrically in OS shell (console)
 as well as in the web browser.  This crate is useful if you want to create a command-line interface for an
