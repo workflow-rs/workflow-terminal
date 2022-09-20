@@ -1,4 +1,4 @@
-# WORKFLOW-TERMINAL
+## WORKFLOW-TERMINAL
 
 Part of the [WORKFLOW-RS](https://github.com/workflow-rs) application framework.
 
@@ -8,7 +8,7 @@ Terminal and command line interface (a custom shell) that runs in the browser an
 
 Platforms supported: Native, WASM (browser)
 
-# Overview:
+## Overview
 
 Workflow Terminal allows you to create a terminal interface that operates symmetrically in OS shell (console)
 as well as in the web browser.  This crate is useful if you want to create a command-line interface for an
