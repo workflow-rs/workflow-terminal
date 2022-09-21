@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0/MIT"
 repository = "https://github.com/workflow-rs/workflow-terminal"
-keywords = ["wasm","framework","browser","terminal","xterm","xtermjs","termion","cli"]
-categories = ["category:command-line-interface"]
+keywords = ["wasm","browser","terminal","cli"]
+categories = ["category:command-line-interface","web-programming::http-client","wasm"]
 exclude = ["/.*", "/test"]
 description = """
 Terminal abstraction layer crate for creating native and in-browser terminal apps
@@ -19,10 +19,14 @@ cfg-if = "1.0.0"
 js-sys = "0.3.56"
 wasm-bindgen = "0.2.79"
 regex = "1.5.5"
-workflow-log = { path = "../workflow-log" }
-workflow-wasm = { path = "../workflow-wasm" }
-workflow-dom = { path = "../workflow-dom" }
-workflow-core = { path = "../workflow-core" }
+workflow-log = "0.1.0"
+workflow-wasm = "0.1.0"
+workflow-dom = "0.1.0"
+workflow-core = "0.1.0"
+# workflow-log = { path = "../workflow-log" }
+# workflow-wasm = { path = "../workflow-wasm" }
+# workflow-dom = { path = "../workflow-dom" }
+# workflow-core = { path = "../workflow-core" }
 thiserror = "1.0.32"
 numtoa = "0.2.4"
 wasm-bindgen-futures="*"
