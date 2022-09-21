@@ -5,7 +5,7 @@ edition = "2021"
 license = "Apache-2.0/MIT"
 repository = "https://github.com/workflow-rs/workflow-terminal"
 keywords = ["wasm","browser","terminal","cli"]
-categories = ["category:command-line-interface","web-programming::http-client","wasm"]
+categories = ["command-line-interface","web-programming::http-client","wasm"]
 exclude = ["/.*", "/test"]
 description = """
 Terminal abstraction layer crate for creating native and in-browser terminal apps
