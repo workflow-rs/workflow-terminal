@@ -2,7 +2,7 @@
 name = "workflow-terminal"
 version = "0.1.0"
 edition = "2021"
-license = "Apache-2.0 OR MIT"
+license = "Apache-2.0/MIT"
 repository = "https://github.com/workflow-rs/workflow-terminal"
 keywords = ["wasm","framework","browser","terminal","xterm","xtermjs","termion","cli"]
 categories = ["category:command-line-interface"]

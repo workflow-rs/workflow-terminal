@@ -6,7 +6,10 @@ Part of the [WORKFLOW-RS](https://github.com/workflow-rs) application framework.
 
 Terminal and command line interface (a custom shell) that runs in the browser and in the native environment.
 
-Platforms supported: Native, WASM (browser)
+[![Crates.io](https://img.shields.io/crates/l/workflow-terminal.svg?maxAge=2592000)](https://crates.io/crates/workflow-terminal)
+[![Crates.io](https://img.shields.io/crates/v/workflow-terminal.svg?maxAge=2592000)](https://crates.io/crates/workflow-terminal)
+![platform](https://img.shields.io/badge/platform-Native-informational)
+![platform](https://img.shields.io/badge/platform-Web%20%28wasm32%29-informational)
 
 ## Overview
 
