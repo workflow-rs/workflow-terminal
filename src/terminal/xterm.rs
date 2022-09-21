@@ -6,6 +6,7 @@ use crate::Result;
 use crate::keys::Key;
 use crate::terminal::Terminal;
 use crate::terminal::Options;
+use crate::terminal::TargetElement;
 use wasm_bindgen::JsValue;
 use std::fmt::Debug;
 use std::sync::atomic::AtomicBool;
@@ -91,8 +92,24 @@ impl Xterm{
     }
 
     pub fn new_with_options(options: Options) -> Result<Self> {
-        let body_el = body().expect("Unable to get 'body' element");
-        Self::new_with_element(&body_el, options)
+        let el = match &options.element {
+            TargetElement::Body => {
+                body().expect("Unable to get 'body' element")
+            },
+            TargetElement::Element(el) => el.clone(),
+            TargetElement::TagName(tag) => {
+                document()
+                    .get_elements_by_tag_name(&tag)
+                    .item(0)
+                    .ok_or("Unable to locate parent element for terminal")?
+            },
+            TargetElement::Id(id) => {
+                document()
+                    .get_element_by_id(&id)
+                    .ok_or("Unable to locate parent element for terminal")?
+            }
+        };
+        Self::new_with_element(&el, options)
     }
 
     pub fn new_with_element(parent:&Element, _options:Options)->Result<Self> {

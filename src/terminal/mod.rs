@@ -9,6 +9,9 @@ use crate::keys::Key;
 use crate::cursor::*;
 use crate::clear::*;
 
+mod options;
+pub use options::Options;
+pub use options::TargetElement;
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
@@ -23,32 +26,7 @@ cfg_if! {
     }
 }
 
-pub struct Options{
-    pub prompt: Option<String>,
-}
 
-impl Default for Options {
-    fn default() -> Self {
-        Options {
-            prompt: None
-        }
-    }
-}
-
-impl Options{
-    pub fn new() -> Options{
-        Options::default()
-    }
-
-    pub fn with_prompt(mut self, prompt: String) -> Self {
-        self.prompt = Some(prompt);
-        self
-    }
-
-    pub fn prompt(&self) -> String {
-        self.prompt.as_ref().unwrap_or(&"$ ".to_string()).clone()
-    }
-}
 
 
 #[derive(Debug)]
