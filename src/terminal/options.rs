@@ -26,10 +26,17 @@ impl Options{
         Options::default()
     }
 
-    pub fn with_prompt(mut self, prompt: String) -> Self {
-        self.prompt = Some(prompt);
+    pub fn with_prompt(mut self, prompt: &str) -> Self {
+        self.prompt = Some(prompt.into());
         self
     }
+
+    pub fn with_element(mut self, element: TargetElement) -> Self {
+        self.element = element;
+        self
+    }
+
+
 
     pub fn prompt(&self) -> String {
         self.prompt.as_ref().unwrap_or(&"$ ".to_string()).clone()

@@ -183,6 +183,27 @@ impl Terminal {
         Ok(terminal)
     }
 
+    pub fn try_new_with_options(
+        handler : Arc<dyn Cli>,
+        // prompt : &str,
+        options : Options,
+    ) -> Result<Self> {
+
+        let term = Arc::new(Interface::try_new_with_options(&options)?);
+
+        let terminal = Self {
+            inner : Arc::new(Mutex::new(Inner::new())),
+            running : Arc::new(AtomicBool::new(false)),
+            prompt : Arc::new(Mutex::new(options.prompt())),
+            term,
+            handler,
+            terminate : Arc::new(AtomicBool::new(false)),
+            user_input : UserInput::new(),
+        };
+
+        Ok(terminal)
+    }
+
     pub async fn init(self : &Arc<Self>)->Result<()>{
         self.handler.init(self)?;
         self.term.init(self).await?;

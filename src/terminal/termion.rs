@@ -22,9 +22,9 @@ pub struct Termion {
 
 impl Termion {
     pub fn try_new() -> Result<Self> {
-        Self::try_new_with_options(Options::default())
+        Self::try_new_with_options(&Options::default())
     }
-    pub fn try_new_with_options(_options:Options) -> Result<Self> {
+    pub fn try_new_with_options(_options:&Options) -> Result<Self> {
         let termion = Termion {
             terminal: Arc::new(Mutex::new(None)),
             terminate : Arc::new(AtomicBool::new(false)),

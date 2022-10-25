@@ -88,10 +88,10 @@ pub struct Xterm {
 impl Xterm{
 
     pub fn try_new() -> Result<Self> {
-        Self::new_with_options(Options::default())
+        Self::try_new_with_options(&Options::default())
     }
 
-    pub fn new_with_options(options: Options) -> Result<Self> {
+    pub fn try_new_with_options(options: &Options) -> Result<Self> {
         let el = match &options.element {
             TargetElement::Body => {
                 body().expect("Unable to get 'body' element")
@@ -109,10 +109,10 @@ impl Xterm{
                     .ok_or("Unable to locate parent element for terminal")?
             }
         };
-        Self::new_with_element(&el, options)
+        Self::try_new_with_element(&el, options)
     }
 
-    pub fn new_with_element(parent:&Element, _options:Options)->Result<Self> {
+    pub fn try_new_with_element(parent:&Element, _options:&Options)->Result<Self> {
         let element = document().create_element("div")?;
         element.set_attribute("class", "terminal")?;
         parent.append_child(&element)?;
