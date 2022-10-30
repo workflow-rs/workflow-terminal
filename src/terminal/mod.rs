@@ -475,6 +475,11 @@ impl Terminal {
         self.term.update_theme()?;
         Ok(())
     }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn update_theme(&self)->Result<()> {
+        Ok(())
+    }
     
 }
 
