@@ -11,3 +11,6 @@ pub use terminal::Terminal;
 pub use terminal::Options;
 pub use terminal::parse;
 pub use cli::Cli;
+
+#[cfg(target_arch = "wasm32")]
+pub use terminal::{Theme, ThemeOption};

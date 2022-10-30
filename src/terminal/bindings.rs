@@ -32,6 +32,10 @@ extern "C" {
 
 #[wasm_bindgen]
 extern "C" {
+    #[wasm_bindgen(extends = js_sys::Object)]
+    pub type XtermCoreImpl;
+    #[wasm_bindgen(method, js_name="_setTheme")]
+    pub fn set_theme(this: &XtermCoreImpl, them: js_sys::Object);
 
     #[wasm_bindgen(extends = js_sys::Object)]
     pub type XtermEvent;
@@ -53,8 +57,14 @@ extern "C" {
     #[wasm_bindgen(method, getter)]
     pub fn number(this: &XtermImpl) -> u32;
 
+    #[wasm_bindgen(method, getter, js_name="_core")]
+    pub fn core(this: &XtermImpl) -> XtermCoreImpl;
+
     #[wasm_bindgen(method)]
     pub fn open(this: &XtermImpl, el: &Element);
+
+    #[wasm_bindgen(method, js_name="setOption")]
+    pub fn set_option(this: &XtermImpl, name:&str, option: js_sys::Object);
 
     #[wasm_bindgen(method, js_name="onKey")]
     pub fn on_key(this: &XtermImpl, f: &js_sys::Function);
@@ -82,6 +92,11 @@ impl Debug for XtermImpl {
 impl XtermImpl {
     pub fn write<T:Into<String>>(&self, text:T){
         self._write(text.into());
+    }
+
+    pub fn set_theme(&self, theme:js_sys::Object){
+        self.set_option("theme", theme.clone());
+        //self.core().set_theme(theme);
     }
 }
 

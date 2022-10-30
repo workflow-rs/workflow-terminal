@@ -18,6 +18,7 @@ cfg_if! {
         mod xterm;
         mod bindings;
         pub use crate::terminal::xterm::Xterm as Interface;
+        pub use xterm::{Theme, ThemeOption};
 
 
     } else {
@@ -464,6 +465,17 @@ impl Terminal {
         Ok(())
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_theme(&self, theme:Theme)->Result<()> {
+        self.term.set_theme(theme)?;
+        Ok(())
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub fn update_theme(&self)->Result<()> {
+        self.term.update_theme()?;
+        Ok(())
+    }
+    
 }
 
 /// Utility function to strip multiple whitespaces and return a Vec<String>

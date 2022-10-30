@@ -18,6 +18,75 @@ use workflow_core::channel::{oneshot,unbounded,Sender,Receiver};
 use workflow_dom::utils::body;
 use wasm_bindgen::prelude::*;
 use super::bindings::*;
+
+
+#[derive(Default)]
+pub struct Theme{
+    background:Option<String>,
+    foreground:Option<String>,
+    selection:Option<String>,
+    cursor:Option<String>,
+}
+
+pub enum ThemeOption{
+    Background,
+    Foreground,
+    Selection,
+    Cursor
+}
+impl ThemeOption{
+    pub fn list() -> Vec<Self> {
+        Vec::from([
+            Self::Background,
+            Self::Foreground,
+            Self::Selection,
+            Self::Cursor,
+        ])
+    }
+}
+impl ToString for ThemeOption{
+    fn to_string(&self) -> String {
+        match self{
+            Self::Background=>"Background",
+            Self::Foreground=>"Foreground",
+            Self::Selection=>"Selection",
+            Self::Cursor=>"Cursor",
+        }.to_string()
+    }
+}
+
+impl Theme{
+    pub fn new()->Self{
+        Self{
+            ..Default::default()
+        }
+    }
+    pub fn get(&self, key:&ThemeOption)->Option<String>{
+        match key{
+            ThemeOption::Background=>self.background.clone(),
+            ThemeOption::Foreground=>self.foreground.clone(),
+            ThemeOption::Selection=>self.selection.clone(),
+            ThemeOption::Cursor=>self.cursor.clone(),
+        }
+    }
+    pub fn set(&mut self, key:ThemeOption, value:Option<String>){
+        match key{
+            ThemeOption::Background=>{
+                self.background = value;
+            },
+            ThemeOption::Foreground=>{
+                self.foreground = value;
+            },
+            ThemeOption::Selection=>{
+                self.selection = value;
+            },
+            ThemeOption::Cursor=>{
+                self.cursor = value;
+            },
+        }
+    }
+}
+
 enum Ctl {
     SinkEvent(SinkEvent),
     Paste,
@@ -163,6 +232,56 @@ impl Xterm{
 
 
         Ok(term)
+    }
+
+    pub fn update_theme(&self)->Result<()>{
+        let el = self.xterm.lock().unwrap().as_ref().expect("xterm is missing").get_element();
+        let css = window().get_computed_style(&el)?;
+        //log_trace!("css: {:?}", css);
+        if let Some(css) = css{
+            let keys = Vec::from([
+                ("background", "--workflow-terminal-background"),
+                ("foreground", "--workflow-terminal-foreground"),
+                ("cursor", "--workflow-terminal-cursor"),
+                ("selection", "--workflow-terminal-selection"),
+            ]);
+            let theme_obj = js_sys::Object::new();
+            for (key, css_var) in keys{
+                if let Ok(value) = css.get_property_value(css_var){
+                    log_trace!("workflow-terminal: {} var: {:?}", key, value);
+                    js_sys::Reflect::set(
+                        &theme_obj,
+                        &JsValue::from(key),
+                        &JsValue::from(value.trim())
+                    )?;
+                }
+            }
+
+            let term = self.xterm.lock().unwrap();
+            let term = term.as_ref().expect("xterm is missing");
+            term.set_theme(theme_obj);
+        }
+
+        Ok(())
+    }
+    pub fn set_theme(&self, theme:Theme)->Result<()> {
+        let theme_obj = js_sys::Object::new();
+        let properties = ThemeOption::list();
+
+        for key in properties{
+            if let Some(v) = theme.get(&key){
+                js_sys::Reflect::set(
+                    &theme_obj,
+                    &JsValue::from(key.to_string().to_lowercase()),
+                    &JsValue::from(v)
+                )?;
+            }
+        }
+
+        let term = self.xterm.lock().unwrap();
+        let term = term.as_ref().expect("xterm is missing");
+        term.set_theme(theme_obj);
+        Ok(())
     }
 
     fn init_addons(&self, xterm : &XtermImpl) -> Result<()> {
