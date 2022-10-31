@@ -479,12 +479,12 @@ impl Xterm{
     }
 
     pub fn resize(&self) -> Result<()>{
-        self.measure()?;
+        //self.measure()?;
 
         let fit = self.fit.lock().unwrap();
         let fit = fit.as_ref().unwrap();
         // TODO review if this is correct
-        fit.propose_dimensions();
+        //fit.propose_dimensions();
         // TODO review if this is correct
         fit.fit();
 
