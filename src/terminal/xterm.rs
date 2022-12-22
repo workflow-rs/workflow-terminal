@@ -12,7 +12,7 @@ use std::fmt::Debug;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::{Mutex, Arc};
-use workflow_wasm::listener::Listener;
+use workflow_wasm::prelude::*;
 use workflow_wasm::utils::*;
 use workflow_core::channel::{oneshot,unbounded,Sender,Receiver};
 use workflow_dom::utils::body;
@@ -145,12 +145,12 @@ pub struct Xterm {
     pub element: Element,
     xterm:Arc<Mutex<Option<XtermImpl>>>,
     terminal: Arc<Mutex<Option<Arc<Terminal>>>>,
-    listener: Arc<Mutex<Option<Listener<XtermEvent>>>>,
+    listener: Arc<Mutex<Option<Callback<CallbackClosure<XtermEvent>>>>>,
     sink : Arc<Sink>,
-    resize : Arc<Mutex<Option<(ResizeObserver,Listener<JsValue>)>>>,
+    resize : Arc<Mutex<Option<(ResizeObserver, Callback<CallbackClosure<JsValue>>)>>>,
     fit : Arc<Mutex<Option<FitAddon>>>,
     _web_links : Arc<Mutex<Option<WebLinksAddon>>>,
-    clipboard_listerner:  Arc<Mutex<Option<Listener<web_sys::KeyboardEvent>>>>,
+    clipboard_listerner:  Arc<Mutex<Option<Callback<CallbackClosure<web_sys::KeyboardEvent>>>>>,
     terminate : Arc<AtomicBool>,
 }
 
@@ -316,7 +316,7 @@ impl Xterm{
     fn init_clipboard(self : &Arc<Self>, xterm : &XtermImpl) -> Result<()> {
 
         let this = self.clone();
-        let clipboard_listener = Listener::new(move |e:web_sys::KeyboardEvent|->std::result::Result<(), JsValue>{
+        let clipboard_callback = callback!(move |e:web_sys::KeyboardEvent|->std::result::Result<(), JsValue>{
             //log_trace!("xterm: key:{}, ctrl_key:{}, meta_key:{},  {:?}", e.key(), e.ctrl_key(), e.meta_key(), e);
             if e.key() == "v" && (e.ctrl_key() || e.meta_key()){
                 this.sink.sender.try_send(Ctl::Paste).expect("Unable to send paste Ctl");
@@ -325,30 +325,30 @@ impl Xterm{
         });
         let mut locked = self.clipboard_listerner.lock().expect("Unable to lock");
         
-        xterm.get_element().add_event_listener_with_callback("keydown", clipboard_listener.into_js())?;
-        *locked = Some(clipboard_listener);
+        xterm.get_element().add_event_listener_with_callback("keydown", clipboard_callback.as_ref())?;
+        *locked = Some(clipboard_callback);
 
         Ok(())
     }
 
     fn init_resize_observer(self : &Arc<Self>) -> Result<()> {
         let this = self.clone();
-        let resize_listener = Listener::new(move |_|->std::result::Result<(), JsValue>{
+        let resize_callback = callback!(move |_|->std::result::Result<(), JsValue>{
             if let Err(err) = this.resize() {
                 log_error!("Resize error: {:?}", err);
             }
             Ok(())
         });
-        let resize_observer = ResizeObserver::new(resize_listener.into_js())?;
+        let resize_observer = ResizeObserver::new(resize_callback.as_ref())?;
         resize_observer.observe(&self.element);
-        *self.resize.lock().unwrap() = Some((resize_observer,resize_listener));
+        *self.resize.lock().unwrap() = Some((resize_observer, resize_callback));
 
         Ok(())
     }
 
     fn init_kbd_listener(self : &Arc<Self>, xterm : &XtermImpl) -> Result<()> {
         let this = self.clone();
-        let listener = Listener::new(move |e:XtermEvent|->std::result::Result<(), JsValue>{
+        let callback = callback!(move |e:XtermEvent|->std::result::Result<(), JsValue>{
             //let term_key = try_get_string(&e, "key")?;
             let term_key = e.get_key();
             let dom_event = e.get_dom_event();
@@ -364,8 +364,8 @@ impl Xterm{
             Ok(())
         });
 
-        xterm.on_key(listener.into_js());
-        *self.listener.lock().unwrap() = Some(listener);
+        xterm.on_key(callback.as_ref());
+        *self.listener.lock().unwrap() = Some(callback);
 
         Ok(())
     }
