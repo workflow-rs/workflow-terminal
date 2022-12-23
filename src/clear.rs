@@ -1,3 +1,7 @@
+//!
+//! Clear line helper (ANSI escape codes to clear the terminal line)
+//! 
+
 use std::fmt;
 
 pub struct ClearLine;

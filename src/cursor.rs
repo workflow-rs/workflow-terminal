@@ -1,4 +1,4 @@
-// Cursor helper structs (from https://crates.io/crates/termion)
+//! Cursor helper structs (from [https://crates.io/crates/termion](https://crates.io/crates/termion))
 
 use std::fmt;
 use numtoa::NumToA;

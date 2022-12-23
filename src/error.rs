@@ -1,5 +1,8 @@
-use std::sync::PoisonError;
+//!
+//! Errors produced by [`workflow_terminal`](super)
+//! 
 
+use std::sync::PoisonError;
 use wasm_bindgen::JsValue;
 use workflow_core::channel::{RecvError,SendError};
 use thiserror::Error;

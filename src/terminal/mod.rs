@@ -1,3 +1,7 @@
+//!
+//! Module implementing terminal abstraction
+//! 
+
 use cfg_if::cfg_if;
 use regex::Regex;
 use std::sync::atomic::{ AtomicBool, Ordering };
@@ -17,13 +21,13 @@ cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         mod xterm;
         mod bindings;
-        pub use crate::terminal::xterm::Xterm as Interface;
-        pub use xterm::{Theme, ThemeOption};
+        use crate::terminal::xterm::Xterm as Interface;
+        use xterm::{Theme, ThemeOption};
 
 
     } else {
         mod termion;
-        pub use crate::terminal::termion::Termion as Interface;
+        use crate::terminal::termion::Termion as Interface;
     }
 }
 
@@ -31,7 +35,7 @@ cfg_if! {
 
 
 #[derive(Debug)]
-pub struct Inner {
+struct Inner {
     pub buffer:String,
     history:Vec<String>,
     pub cursor:usize,
@@ -55,7 +59,7 @@ impl Inner {
 }
 
 #[derive(Clone)]
-pub struct UserInput {
+struct UserInput {
     buffer : Arc<Mutex<String>>,
     enabled : Arc<AtomicBool>,
     secure :  Arc<AtomicBool>,
@@ -150,10 +154,10 @@ impl UserInput {
     
 }
 
-
+/// Terminal interface
 #[derive(Clone)]
 pub struct Terminal {
-    pub inner : Arc<Mutex<Inner>>,
+    inner : Arc<Mutex<Inner>>,
     pub running: Arc<AtomicBool>,
     pub prompt : Arc<Mutex<String>>,
     pub term : Arc<Interface>,
@@ -164,6 +168,7 @@ pub struct Terminal {
 
 impl Terminal {
 
+    /// Create a new default terminal instance bound to the supplied command-line processor [`Cli`].
     pub fn try_new(
         handler : Arc<dyn Cli>,
         prompt : &str,
@@ -184,6 +189,8 @@ impl Terminal {
         Ok(terminal)
     }
 
+    /// Create a new terminal instance bound to the supplied command-line processor [`Cli`].
+    /// Receives [`options::Options`] that allow terminal customization.
     pub fn try_new_with_options(
         handler : Arc<dyn Cli>,
         // prompt : &str,
@@ -205,16 +212,19 @@ impl Terminal {
         Ok(terminal)
     }
 
+    /// Init the terminal instance
     pub async fn init(self : &Arc<Self>)->Result<()>{
         self.handler.init(self)?;
         self.term.init(self).await?;
         Ok(())
     }
 
+    /// Access to the underlying terminal instance
     pub fn inner(&self) -> LockResult<MutexGuard<'_, Inner>> {
         self.inner.lock()
     }
 
+    /// Get terminal command line history list as `Vec<String>`
     pub fn history(&self) -> Vec<String> {
         let data = self.inner().unwrap();
         data.history.clone()
@@ -224,10 +234,12 @@ impl Terminal {
         self.inner().unwrap().reset_line_buffer();
     }
 
+    /// Get the current terminal prompt string
     pub fn get_prompt(&self) -> String {
         return self.prompt.lock().unwrap().clone();
     }
 
+    /// Render the current prompt in the terminal
     pub fn prompt(&self) {
         let mut data = self.inner().unwrap();
         data.cursor = 0;
@@ -235,14 +247,17 @@ impl Terminal {
         self.term().write(format!("{}", self.get_prompt()));
 	}
 
+    /// Output CRLF sequence
     pub fn crlf(&self) {
         self.term().write("\n\r".to_string());
     }
 
+    /// Write a string
     pub fn write<S>(&self, s : S) where S : Into<String> {
         self.term().write(s.into());
     }
 
+    /// Write a string ending with CRLF sequence
     pub fn writeln<S>(&self, s : S) where S : Into<String> {
 		if self.is_running() {
             self.write(format!("{}\n\r", s.into()));
@@ -258,26 +273,35 @@ impl Terminal {
         }
     }
 
+    /// Get a clone of Arc of the underlying terminal instance
     pub fn term(&self) -> Arc<Interface> {
         return Arc::clone(&self.term);
     }
 
+    /// Execute the async terminal processing loop.
+    /// Once started, it should be stopped using
+    /// [`Terminal::exit`]
     pub async fn run(&self) -> Result<()> {
         // self.prompt();
         Ok(self.term().run().await?)
     }
 
+    /// Exits the async terminal processing loop
     pub fn exit(&self) {
         self.terminate.store(true, Ordering::SeqCst);
         self.term.exit();
     }
 
+    /// Ask a question (input a string until CRLF).
+    /// `secure` argument suppresses echoing of the 
+    /// user input (useful for password entry)
     pub async fn ask(self : &Arc<Terminal>, secure: bool, prompt : &str) -> Result<String> {
         self.reset_line_buffer();
         self.term().write(prompt.to_string());
         Ok(self.user_input.capture(secure, self).await?)
     }
 
+    /// Inject a string into the current cursor position
     pub fn inject(&self, text : String) -> Result<()> {
         let mut data = self.inner()?;
         self.inject_impl(&mut data, text)?;
@@ -292,7 +316,7 @@ impl Terminal {
         Ok(())
     }
 
-    pub async fn ingest(self : &Arc<Terminal>, key : Key, _term_key : String) -> Result<()> {
+    async fn ingest(self : &Arc<Terminal>, key : Key, _term_key : String) -> Result<()> {
 
         if self.user_input.is_enabled() {
             self.user_input.inject(key, self)?;
@@ -449,11 +473,16 @@ impl Terminal {
         }
 	}
 
+    /// Indicates that the terminal has received command input
+    /// and has not yet returned from the processing. This flag
+    /// is set to true when delivering the user command to the
+    /// [`Cli`] handler and is reset to false when the [`Cli`]
+    /// handler returns.
     pub fn is_running(&self)->bool{
         self.running.load(Ordering::SeqCst)
     }
 
-    pub async fn digest(self : &Arc<Terminal>, cmd : String) -> Result<()> {
+    async fn digest(self : &Arc<Terminal>, cmd : String) -> Result<()> {
         if let Err(err) = self.handler.digest(self.clone(), cmd).await {
             self.writeln(err);
         }
@@ -470,6 +499,7 @@ impl Terminal {
         self.term.set_theme(theme)?;
         Ok(())
     }
+
     #[cfg(target_arch = "wasm32")]
     pub fn update_theme(&self)->Result<()> {
         self.term.update_theme()?;

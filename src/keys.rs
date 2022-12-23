@@ -1,3 +1,7 @@
+//!
+//! Terminal key definitions
+//! 
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Key {
     Enter,

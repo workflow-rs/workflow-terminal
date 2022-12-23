@@ -1,3 +1,7 @@
+//!
+//! [xterm.js](http://xtermjs.org) [`wasm_bindgen`] interface and plugin bindings
+//! 
+
 use web_sys::Element;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;

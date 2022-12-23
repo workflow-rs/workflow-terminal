@@ -1,3 +1,7 @@
+//!
+//! Cli trait for implementing a user-side command-line processor.
+//! 
+
 use std::sync::Arc;
 use async_trait::async_trait;
 use crate::result::Result;
